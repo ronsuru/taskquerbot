@@ -10,6 +10,7 @@ export const users = pgTable("users", {
   balance: decimal("balance", { precision: 18, scale: 8 }).notNull().default("0"),
   rewards: decimal("rewards", { precision: 18, scale: 8 }).notNull().default("0"),
   completedTasks: integer("completed_tasks").notNull().default(0),
+  isAdmin: boolean("is_admin").notNull().default(false),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 

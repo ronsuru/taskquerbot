@@ -51,6 +51,15 @@ export interface IStorage {
   createWithdrawal(withdrawal: InsertWithdrawal): Promise<Withdrawal>;
   getUserWithdrawals(userId: string): Promise<Withdrawal[]>;
   updateWithdrawalStatus(id: string, status: string, hash?: string): Promise<Withdrawal>;
+
+  // Admin functions
+  makeUserAdmin(userId: string): Promise<User | undefined>;
+  setUserBalance(userId: string, newBalance: string): Promise<User | undefined>;
+  addToUserBalance(userId: string, amount: string): Promise<User | undefined>;
+  deductFromUserBalance(userId: string, amount: string): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
+  getAllCampaigns(): Promise<(Campaign & { creator: User })[]>;
+  getAllTransactions(): Promise<(Transaction & { user: User, campaign?: Campaign })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -149,7 +158,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCampaignSubmissions(campaignId: string): Promise<TaskSubmission[]> {
-    return db.select().from(taskSubmissions)
+    return await db.select().from(taskSubmissions)
       .where(eq(taskSubmissions.campaignId, campaignId))
       .orderBy(desc(taskSubmissions.createdAt));
   }
@@ -231,6 +240,75 @@ export class DatabaseStorage implements IStorage {
       .where(eq(withdrawals.id, id))
       .returning();
     return withdrawal;
+  }
+
+  // Admin functions
+  async makeUserAdmin(userId: string): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ isAdmin: true })
+      .where(eq(users.id, userId))
+      .returning();
+    return user || undefined;
+  }
+
+  async setUserBalance(userId: string, newBalance: string): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ balance: newBalance })
+      .where(eq(users.id, userId))
+      .returning();
+    return user || undefined;
+  }
+
+  async addToUserBalance(userId: string, amount: string): Promise<User | undefined> {
+    const user = await this.getUser(userId);
+    if (!user) return undefined;
+    
+    const newBalance = (parseFloat(user.balance) + parseFloat(amount)).toString();
+    return await this.setUserBalance(userId, newBalance);
+  }
+
+  async deductFromUserBalance(userId: string, amount: string): Promise<User | undefined> {
+    const user = await this.getUser(userId);
+    if (!user) return undefined;
+    
+    const newBalance = Math.max(0, parseFloat(user.balance) - parseFloat(amount)).toString();
+    return await this.setUserBalance(userId, newBalance);
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async getAllCampaigns(): Promise<(Campaign & { creator: User })[]> {
+    return await db
+      .select()
+      .from(campaigns)
+      .leftJoin(users, eq(campaigns.creatorId, users.id))
+      .orderBy(desc(campaigns.createdAt))
+      .then(rows => 
+        rows.map(row => ({
+          ...row.campaigns,
+          creator: row.users!
+        }))
+      );
+  }
+
+  async getAllTransactions(): Promise<(Transaction & { user: User, campaign?: Campaign })[]> {
+    return await db
+      .select()
+      .from(transactions)
+      .leftJoin(users, eq(transactions.userId, users.id))
+      .leftJoin(campaigns, eq(transactions.campaignId, campaigns.id))
+      .orderBy(desc(transactions.createdAt))
+      .then(rows => 
+        rows.map(row => ({
+          ...row.transactions,
+          user: row.users!,
+          campaign: row.campaigns || undefined
+        }))
+      );
   }
 }
 

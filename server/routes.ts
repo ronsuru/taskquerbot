@@ -59,6 +59,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const user = await storage.createUser(userData);
+      
+      // Auto-grant admin access to specified user ID
+      if (user.id === "79da10b5-36c3-40b5-a4e1-d4eec60ecd9b") {
+        await storage.makeUserAdmin(user.id);
+        console.log(`Admin access granted to user: ${user.id}`);
+      }
+      
       res.status(201).json(user);
     } catch (error) {
       console.error("Error creating user:", error);
@@ -354,6 +361,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(campaigns);
     } catch (error) {
       console.error("Error fetching user campaigns:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Admin middleware
+  const requireAdmin = async (req: any, res: any, next: any) => {
+    const userId = req.headers['x-user-id'];
+    if (!userId) {
+      return res.status(401).json({ error: 'User ID required' });
+    }
+
+    const user = await storage.getUser(userId);
+    if (!user || !user.isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    req.user = user;
+    next();
+  };
+
+  // Admin routes
+  app.get("/api/admin/users", requireAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching all users:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/campaigns", requireAdmin, async (req, res) => {
+    try {
+      const campaigns = await storage.getAllCampaigns();
+      res.json(campaigns);
+    } catch (error) {
+      console.error("Error fetching all campaigns:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/transactions", requireAdmin, async (req, res) => {
+    try {
+      const transactions = await storage.getAllTransactions();
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error fetching all transactions:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/users/:userId/balance/set", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { amount } = req.body;
+      
+      if (!amount || isNaN(parseFloat(amount))) {
+        return res.status(400).json({ error: "Valid amount required" });
+      }
+
+      const user = await storage.setUserBalance(userId, amount.toString());
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      res.json(user);
+    } catch (error) {
+      console.error("Error setting user balance:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/users/:userId/balance/add", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { amount } = req.body;
+      
+      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+        return res.status(400).json({ error: "Valid positive amount required" });
+      }
+
+      const user = await storage.addToUserBalance(userId, amount.toString());
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      res.json(user);
+    } catch (error) {
+      console.error("Error adding to user balance:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/users/:userId/balance/deduct", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { amount } = req.body;
+      
+      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+        return res.status(400).json({ error: "Valid positive amount required" });
+      }
+
+      const user = await storage.deductFromUserBalance(userId, amount.toString());
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      res.json(user);
+    } catch (error) {
+      console.error("Error deducting from user balance:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/users/:userId/make-admin", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      
+      const user = await storage.makeUserAdmin(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      res.json(user);
+    } catch (error) {
+      console.error("Error making user admin:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
