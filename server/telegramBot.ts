@@ -214,6 +214,26 @@ EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv
         return;
       }
 
+      // Check if user already exists first
+      const existingUser = await storage.getUserByTelegramId(telegramId);
+      
+      if (existingUser) {
+        const accountInfo = `
+✅ Account Already Exists!
+
+👤 User ID: ${existingUser.id}
+💰 Balance: ${existingUser.balance} USDT
+🏆 Total Rewards: ${existingUser.rewards} USDT
+📊 Tasks Completed: ${existingUser.completedTasks}
+💼 Wallet: ${existingUser.walletAddress}
+
+Your account is already active and your User ID remains permanent!
+        `;
+        
+        this.bot.sendMessage(chatId, accountInfo);
+        return;
+      }
+
       // Convert wallet address to bounceable format and create user account
       const bounceableAddress = tonService.toBounceable(walletAddress);
       const user = await storage.createUser({
@@ -231,6 +251,8 @@ EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv
 💰 Balance: ${user.balance} USDT
 🏆 Rewards: ${user.rewards} USDT
 📊 Tasks Completed: ${user.completedTasks}
+
+🔒 Your User ID is now PERMANENT and will never change!
 
 Your account is now active! You can start earning by completing tasks or create your own campaigns.
       `;
