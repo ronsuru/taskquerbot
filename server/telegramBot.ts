@@ -22,6 +22,9 @@ const campaignCreationStates = new Map<string, CampaignCreationState>();
 // Withdrawal state management
 const awaitingWithdrawalAmount = new Map<string, string>(); // telegramId -> userId
 
+// Admin settings state management
+const awaitingSettingChange = new Map<string, string>(); // telegramId -> settingKey
+
 export class TaskBot {
   private bot: TelegramBot;
 
@@ -143,6 +146,13 @@ Use /menu to see all available commands.
         await this.handleCustomWithdrawalAmount(chatId, telegramId, awaitingUserId, text);
         return;
       }
+
+      // Check if user is entering admin setting value
+      const awaitingSetting = awaitingSettingChange.get(telegramId);
+      if (awaitingSetting && text && !text.startsWith('/') && !text.match(/^(EQ|UQ)[A-Za-z0-9_-]{46}$/) && !text.match(/^[a-fA-F0-9]{64}$/)) {
+        await this.handleAdminSettingChange(chatId, telegramId, awaitingSetting, text);
+        return;
+      }
     });
 
     // Handle transaction hash verification
@@ -235,7 +245,24 @@ Use /menu to see all available commands.
     const adminMessage = `
 🔴 Admin Panel
 
-Balance Management Tools:
+Choose an admin function:
+    `;
+
+    this.bot.sendMessage(chatId, adminMessage, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '💰 Balance Management', callback_data: 'admin_balance_menu' }],
+          [{ text: '⚙️ Advanced Settings', callback_data: 'admin_settings_menu' }],
+          [{ text: '📊 System Information', callback_data: 'admin_system_info' }],
+          [{ text: '❌ Close Admin Panel', callback_data: 'close_admin_panel' }]
+        ]
+      }
+    });
+  }
+
+  private showAdminBalanceMenu(chatId: number, telegramId: string) {
+    const balanceMessage = `
+💰 Balance Management Tools
 
 Available Commands:
 • /setbalance [telegram_id] [amount] - Set user's balance
@@ -246,7 +273,198 @@ Available Commands:
 Example: /setbalance 5154336054 50.00
     `;
 
-    this.bot.sendMessage(chatId, adminMessage);
+    this.bot.sendMessage(chatId, balanceMessage, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
+        ]
+      }
+    });
+  }
+
+  private async showAdminSettingsMenu(chatId: number, telegramId: string) {
+    try {
+      const settings = await storage.getAllSystemSettings();
+      const settingsMap = settings.reduce((acc: any, setting) => {
+        acc[setting.settingKey] = setting.settingValue;
+        return acc;
+      }, {});
+
+      const settingsMessage = `
+⚙️ System Settings
+
+Current Configuration:
+• Min Withdrawal: ${settingsMap['min_withdrawal_amount'] || '0.020'} USDT
+• Withdrawal Fee: ${settingsMap['withdrawal_fee'] || '0.50'} USDT  
+• Campaign Fee: ${settingsMap['campaign_creation_fee'] || '1.00'} USDT
+• Min Slots: ${settingsMap['min_slots'] || '5'} slots
+• Min Reward: ${settingsMap['min_reward_amount'] || '0.015'} USDT
+
+Select a setting to modify:
+      `;
+
+      this.bot.sendMessage(chatId, settingsMessage, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💸 Min Withdrawal Amount', callback_data: 'admin_set_min_withdrawal' }],
+            [{ text: '💳 Withdrawal Fee', callback_data: 'admin_set_withdrawal_fee' }],
+            [{ text: '🏦 Campaign Creation Fee', callback_data: 'admin_set_campaign_fee' }],
+            [{ text: '📊 Min Campaign Slots', callback_data: 'admin_set_min_slots' }],
+            [{ text: '💰 Min Reward Amount', callback_data: 'admin_set_min_reward' }],
+            [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error loading system settings:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading system settings. Please try again.');
+    }
+  }
+
+  private async showSystemInfo(chatId: number, telegramId: string) {
+    try {
+      const totalUsers = await storage.getAllUsers();
+      const totalCampaigns = await storage.getAllCampaigns();
+      const totalTransactions = await storage.getAllTransactions();
+
+      const infoMessage = `
+📊 System Information
+
+Platform Statistics:
+• Total Users: ${totalUsers.length}
+• Total Campaigns: ${totalCampaigns.length}  
+• Total Transactions: ${totalTransactions.length}
+• Server Status: ✅ Online
+
+System uptime: ${process.uptime().toFixed(0)} seconds
+      `;
+
+      this.bot.sendMessage(chatId, infoMessage, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error loading system info:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading system information. Please try again.');
+    }
+  }
+
+  private async handleAdminSetSetting(chatId: number, telegramId: string, settingType: string) {
+    const settingDetails = {
+      'min_withdrawal': {
+        key: 'min_withdrawal_amount',
+        name: 'Minimum Withdrawal Amount',
+        unit: 'USDT',
+        description: 'The minimum amount users can withdraw'
+      },
+      'withdrawal_fee': {
+        key: 'withdrawal_fee',
+        name: 'Withdrawal Fee',
+        unit: 'USDT',
+        description: 'Fixed fee charged for withdrawals'
+      },
+      'campaign_fee': {
+        key: 'campaign_creation_fee',
+        name: 'Campaign Creation Fee',
+        unit: 'USDT',
+        description: 'Fee charged to create new campaigns'
+      },
+      'min_slots': {
+        key: 'min_slots',
+        name: 'Minimum Campaign Slots',
+        unit: 'slots',
+        description: 'Minimum number of slots required for campaigns'
+      },
+      'min_reward': {
+        key: 'min_reward_amount',
+        name: 'Minimum Reward Amount',
+        unit: 'USDT',
+        description: 'Minimum reward amount per task'
+      }
+    };
+
+    const setting = settingDetails[settingType as keyof typeof settingDetails];
+    if (!setting) {
+      this.bot.sendMessage(chatId, '❌ Invalid setting type.');
+      return;
+    }
+
+    // Get current value
+    const currentSetting = await storage.getSystemSetting(setting.key);
+    const currentValue = currentSetting ? currentSetting.settingValue : 'Not set';
+
+    const message = `
+⚙️ Update ${setting.name}
+
+Current Value: ${currentValue} ${setting.unit}
+Description: ${setting.description}
+
+Please enter the new value (numbers only):
+    `;
+
+    awaitingSettingChange.set(telegramId, setting.key);
+    this.bot.sendMessage(chatId, message, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '❌ Cancel', callback_data: 'admin_settings_menu' }]
+        ]
+      }
+    });
+  }
+
+  private async handleAdminSettingChange(chatId: number, telegramId: string, settingKey: string, value: string) {
+    try {
+      const numericValue = parseFloat(value);
+      
+      // Validate numeric input
+      if (isNaN(numericValue) || numericValue < 0) {
+        this.bot.sendMessage(chatId, '❌ Please enter a valid positive number.');
+        return;
+      }
+
+      // Additional validation based on setting type
+      if (settingKey === 'min_slots' && !Number.isInteger(numericValue)) {
+        this.bot.sendMessage(chatId, '❌ Slots must be a whole number.');
+        return;
+      }
+
+      // Update the setting
+      await storage.updateSystemSetting(settingKey, value);
+      
+      // Clear the waiting state
+      awaitingSettingChange.delete(telegramId);
+      
+      // Get setting details for confirmation
+      const settingNames = {
+        'min_withdrawal_amount': 'Minimum Withdrawal Amount',
+        'withdrawal_fee': 'Withdrawal Fee',
+        'campaign_creation_fee': 'Campaign Creation Fee',
+        'min_slots': 'Minimum Campaign Slots',
+        'min_reward_amount': 'Minimum Reward Amount'
+      };
+
+      const settingName = settingNames[settingKey as keyof typeof settingNames] || settingKey;
+      
+      this.bot.sendMessage(chatId, `✅ ${settingName} updated to: ${value}`, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⚙️ Back to Settings', callback_data: 'admin_settings_menu' }],
+            [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
+          ]
+        }
+      });
+      
+      // Log the change for audit purposes
+      console.log(`[ADMIN] Setting ${settingKey} updated to ${value} by ${telegramId}`);
+      
+    } catch (error) {
+      console.error('Error updating system setting:', error);
+      this.bot.sendMessage(chatId, '❌ Error updating setting. Please try again.');
+      awaitingSettingChange.delete(telegramId);
+    }
   }
 
   private showMainMenu(chatId: number, telegramId?: string) {
@@ -1433,6 +1651,57 @@ Please check:
         const type = parts[1]; // 'all' or 'custom'
         const userId = parts[2];
         await this.processWithdrawal(msg.chat.id, telegramId, userId, type);
+      }
+
+      // Admin panel callbacks
+      if (data === 'admin_panel') {
+        if (this.isAdmin(telegramId)) {
+          this.showAdminPanel(msg.chat.id, telegramId);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      if (data === 'admin_balance_menu') {
+        if (this.isAdmin(telegramId)) {
+          this.showAdminBalanceMenu(msg.chat.id, telegramId);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      if (data === 'admin_settings_menu') {
+        if (this.isAdmin(telegramId)) {
+          await this.showAdminSettingsMenu(msg.chat.id, telegramId);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      if (data === 'admin_system_info') {
+        if (this.isAdmin(telegramId)) {
+          await this.showSystemInfo(msg.chat.id, telegramId);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      if (data === 'close_admin_panel') {
+        this.bot.editMessageText('✅ Admin panel closed.', {
+          chat_id: msg.chat.id,
+          message_id: msg.message_id
+        });
+      }
+
+      // Individual setting callbacks
+      if (data.startsWith('admin_set_')) {
+        if (!this.isAdmin(telegramId)) {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+          return;
+        }
+
+        const settingType = data.replace('admin_set_', '');
+        await this.handleAdminSetSetting(msg.chat.id, telegramId, settingType);
       }
 
       this.bot.answerCallbackQuery(callbackQuery.id);
