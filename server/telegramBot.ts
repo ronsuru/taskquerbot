@@ -329,12 +329,15 @@ Example: /setbalance 5154336054 50.00
         return acc;
       }, {});
 
+      const withdrawalFeeRate = settingsMap['withdrawal_fee_rate'] || '0.01';
+      const withdrawalFeePercent = (parseFloat(withdrawalFeeRate) * 100).toFixed(2);
+      
       const settingsMessage = `
 ⚙️ System Settings
 
 Current Configuration:
 • Min Withdrawal: ${settingsMap['min_withdrawal_amount'] || '0.020'} USDT
-• Withdrawal Fee: ${settingsMap['withdrawal_fee'] || '0.50'} USDT  
+• Withdrawal Fee: ${withdrawalFeePercent}% of withdrawal amount
 • Campaign Fee: ${settingsMap['campaign_creation_fee'] || '1.00'} USDT
 • Min Slots: ${settingsMap['min_slots'] || '5'} slots
 • Min Reward: ${settingsMap['min_reward_amount'] || '0.015'} USDT
@@ -400,10 +403,10 @@ System uptime: ${process.uptime().toFixed(0)} seconds
         description: 'The minimum amount users can withdraw'
       },
       'withdrawal_fee': {
-        key: 'withdrawal_fee',
-        name: 'Withdrawal Fee',
-        unit: 'USDT',
-        description: 'Fixed fee charged for withdrawals'
+        key: 'withdrawal_fee_rate',
+        name: 'Withdrawal Fee Rate',
+        unit: '% (as decimal, e.g. 0.01 for 1%)',
+        description: 'Percentage fee charged for withdrawals (e.g. 0.01 = 1%)'
       },
       'campaign_fee': {
         key: 'campaign_creation_fee',
@@ -479,7 +482,7 @@ Please enter the new value (numbers only):
       // Get setting details for confirmation
       const settingNames = {
         'min_withdrawal_amount': 'Minimum Withdrawal Amount',
-        'withdrawal_fee': 'Withdrawal Fee',
+        'withdrawal_fee_rate': 'Withdrawal Fee Rate',
         'campaign_creation_fee': 'Campaign Creation Fee',
         'min_slots': 'Minimum Campaign Slots',
         'min_reward_amount': 'Minimum Reward Amount'
