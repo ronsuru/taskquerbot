@@ -41,6 +41,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin settings endpoints
+  app.get("/api/admin/settings", async (req, res) => {
+    try {
+      const adminId = req.headers["x-user-id"] as string;
+      if (!adminId) {
+        return res.status(401).json({ error: "Admin access required" });
+      }
+
+      const adminUser = await storage.getUserByTelegramId(adminId);
+      if (!adminUser?.isAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const settings = await storage.getAllSystemSettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching system settings:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/settings", async (req, res) => {
+    try {
+      const adminId = req.headers["x-user-id"] as string;
+      if (!adminId) {
+        return res.status(401).json({ error: "Admin access required" });
+      }
+
+      const adminUser = await storage.getUserByTelegramId(adminId);
+      if (!adminUser?.isAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { minWithdrawal, withdrawalFee, campaignCreationFee, minCampaignSlots, minRewardAmount } = req.body;
+
+      // Update each setting individually
+      if (minWithdrawal) {
+        await storage.setSystemSetting("min_withdrawal_amount", minWithdrawal, "Minimum withdrawal amount (USDT)", adminUser.id);
+      }
+      if (withdrawalFee) {
+        await storage.setSystemSetting("withdrawal_fee", withdrawalFee, "Withdrawal fee (USDT)", adminUser.id);
+      }
+      if (campaignCreationFee) {
+        await storage.setSystemSetting("campaign_creation_fee", campaignCreationFee, "Campaign creation fee (USDT)", adminUser.id);
+      }
+      if (minCampaignSlots) {
+        await storage.setSystemSetting("min_slots", minCampaignSlots, "Minimum campaign slots", adminUser.id);
+      }
+      if (minRewardAmount) {
+        await storage.setSystemSetting("min_reward_amount", minRewardAmount, "Minimum reward per task (USDT)", adminUser.id);
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error updating system settings:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // User endpoints
   app.get("/api/users/:telegramId", async (req, res) => {
     try {
@@ -116,13 +175,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaignData = insertCampaignSchema.parse(req.body);
       
-      // Validate minimum values
-      if (campaignData.totalSlots < 5) {
-        return res.status(400).json({ error: "Minimum 5 slots required" });
+      // Validate minimum values using system settings
+      const minSlotsSettings = await storage.getSystemSetting("min_slots");
+      const minRewardSettings = await storage.getSystemSetting("min_reward_amount");
+      
+      const minSlots = minSlotsSettings ? parseInt(minSlotsSettings.settingValue) : 5;
+      const minReward = minRewardSettings ? parseFloat(minRewardSettings.settingValue) : 0.015;
+      
+      if (campaignData.totalSlots < minSlots) {
+        return res.status(400).json({ error: `Minimum ${minSlots} slots required` });
       }
       
-      if (parseFloat(campaignData.rewardAmount) < 0.015) {
-        return res.status(400).json({ error: "Minimum reward amount is 0.015 USDT" });
+      if (parseFloat(campaignData.rewardAmount) < minReward) {
+        return res.status(400).json({ error: `Minimum reward amount is ${minReward} USDT` });
       }
 
       // Calculate costs
@@ -315,14 +380,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid TON wallet address" });
       }
 
+      // Check minimum withdrawal amount using system settings
+      const minWithdrawalSettings = await storage.getSystemSetting("min_withdrawal_amount");
+      const withdrawalFeeSettings = await storage.getSystemSetting("withdrawal_fee");
+      
+      const minWithdrawal = minWithdrawalSettings ? parseFloat(minWithdrawalSettings.settingValue) : 0.020;
+      const withdrawalFee = withdrawalFeeSettings ? parseFloat(withdrawalFeeSettings.settingValue) : 0.50;
+
+      if (parseFloat(amount) < minWithdrawal) {
+        return res.status(400).json({ error: `Minimum withdrawal amount is ${minWithdrawal} USDT` });
+      }
+
       // Check user balance
       const user = await storage.getUser(userId);
       if (!user || parseFloat(user.balance) < parseFloat(amount)) {
         return res.status(400).json({ error: "Insufficient balance" });
       }
 
-      const fee = tonService.calculateFee(amount);
-      const finalAmount = (parseFloat(amount) - parseFloat(fee)).toString();
+      // Use configurable withdrawal fee
+      const fee = withdrawalFee.toString();
+      const finalAmount = (parseFloat(amount) - withdrawalFee).toString();
 
       const withdrawal = await storage.createWithdrawal({
         userId,

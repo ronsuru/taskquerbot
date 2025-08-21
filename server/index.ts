@@ -56,6 +56,15 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
+  // Initialize default system settings
+  try {
+    const { storage } = await import("./storage");
+    await storage.initializeDefaultSettings();
+    log("System settings initialized successfully!");
+  } catch (error) {
+    log(`System settings initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
   // Initialize Telegram Bot
   try {
     await import("./telegramBot");

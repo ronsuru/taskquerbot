@@ -63,6 +63,12 @@ export interface IStorage {
   getAllUsers(): Promise<User[]>;
   getAllCampaigns(): Promise<(Campaign & { creator: User })[]>;
   getAllTransactions(): Promise<(Transaction & { user: User, campaign?: Campaign })[]>;
+  
+  // System Settings
+  getSystemSetting(key: string): Promise<SystemSetting | undefined>;
+  getAllSystemSettings(): Promise<SystemSetting[]>;
+  setSystemSetting(key: string, value: string, description?: string, updatedBy?: string): Promise<SystemSetting>;
+  initializeDefaultSettings(): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
