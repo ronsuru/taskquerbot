@@ -1426,10 +1426,10 @@ ${platformEmoji} **${state.title}**
 
       // Get configurable system settings
       const minWithdrawalSettings = await storage.getSystemSetting("min_withdrawal_amount");
-      const withdrawalFeeSettings = await storage.getSystemSetting("withdrawal_fee");
+      const withdrawalFeeSettings = await storage.getSystemSetting("withdrawal_fee_rate");
       
       const minWithdrawal = minWithdrawalSettings ? parseFloat(minWithdrawalSettings.settingValue) : 0.020;
-      const withdrawalFee = withdrawalFeeSettings ? parseFloat(withdrawalFeeSettings.settingValue) : 0.50;
+      const withdrawalFeeRate = withdrawalFeeSettings ? parseFloat(withdrawalFeeSettings.settingValue) : 0.01; // 1% default
 
       const balance = parseFloat(user.balance);
       console.log(`[WITHDRAWAL DEBUG] User balance parsed: ${balance}`);
@@ -1447,7 +1447,7 @@ ${platformEmoji} **${state.title}**
 
 📋 Withdrawal Details:
 • Minimum amount: ${minWithdrawal} USDT  
-• Network fee: ${withdrawalFee} USDT
+• Network fee: ${(withdrawalFeeRate * 100).toFixed(2)}% of withdrawal amount
 • Processing time: 5-15 minutes
 • Funds sent to your registered wallet
 
@@ -1813,10 +1813,10 @@ Please check:
 
       // Get configurable system settings
       const minWithdrawalSettings = await storage.getSystemSetting("min_withdrawal_amount");
-      const withdrawalFeeSettings = await storage.getSystemSetting("withdrawal_fee");
+      const withdrawalFeeSettings = await storage.getSystemSetting("withdrawal_fee_rate");
       
       const minWithdrawal = minWithdrawalSettings ? parseFloat(minWithdrawalSettings.settingValue) : 0.020;
-      const withdrawalFee = withdrawalFeeSettings ? parseFloat(withdrawalFeeSettings.settingValue) : 0.50;
+      const withdrawalFeeRate = withdrawalFeeSettings ? parseFloat(withdrawalFeeSettings.settingValue) : 0.01; // 1% default
 
       const balance = parseFloat(user.balance);
       let withdrawAmount = balance;
@@ -1828,6 +1828,8 @@ Please check:
         return;
       }
 
+      // Calculate fee as percentage of withdrawal amount
+      const withdrawalFee = withdrawAmount * withdrawalFeeRate;
       const finalAmount = withdrawAmount - withdrawalFee;
 
       // Process withdrawal
@@ -2221,12 +2223,13 @@ The slot has been returned to the campaign pool.
 
       // Get configurable system settings
       const minWithdrawalSettings = await storage.getSystemSetting("min_withdrawal_amount");
-      const withdrawalFeeSettings = await storage.getSystemSetting("withdrawal_fee");
+      const withdrawalFeeSettings = await storage.getSystemSetting("withdrawal_fee_rate");
       
       const minWithdrawal = minWithdrawalSettings ? parseFloat(minWithdrawalSettings.settingValue) : 0.020;
-      const withdrawalFee = withdrawalFeeSettings ? parseFloat(withdrawalFeeSettings.settingValue) : 0.50;
+      const withdrawalFeeRate = withdrawalFeeSettings ? parseFloat(withdrawalFeeSettings.settingValue) : 0.01; // 1% default
 
-      // Process the custom withdrawal
+      // Process the custom withdrawal - calculate fee as percentage of amount
+      const withdrawalFee = amount * withdrawalFeeRate;
       const finalAmount = amount - withdrawalFee;
 
       // Create withdrawal record
