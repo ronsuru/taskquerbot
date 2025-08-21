@@ -476,22 +476,15 @@ Choose an action:
           break;
 
         case 'delete':
-          console.log(`[ADMIN DEBUG] Attempting to delete campaign ${campaignId}`);
-          try {
-            await storage.deleteCampaign(campaignId);
-            console.log(`[ADMIN DEBUG] Campaign ${campaignId} deleted successfully`);
-            this.bot.sendMessage(chatId, `🗑️ Campaign "${campaign.title}" has been permanently deleted.`, {
-              reply_markup: {
-                inline_keyboard: [
-                  [{ text: '🔙 Back to Task Management', callback_data: 'admin_task_menu' }]
-                ]
-              }
-            });
-            console.log(`[ADMIN] Campaign ${campaignId} deleted by admin ${telegramId}`);
-          } catch (deleteError) {
-            console.error(`[ADMIN ERROR] Failed to delete campaign ${campaignId}:`, deleteError);
-            this.bot.sendMessage(chatId, `❌ Error deleting campaign "${campaign.title}". Please check logs and try again.`);
-          }
+          await storage.deleteCampaign(campaignId);
+          this.bot.sendMessage(chatId, `🗑️ Campaign "${campaign.title}" has been permanently deleted.`, {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔙 Back to Task Management', callback_data: 'admin_task_menu' }]
+              ]
+            }
+          });
+          console.log(`[ADMIN] Campaign ${campaignId} deleted by admin ${telegramId}`);
           break;
 
         default:
@@ -763,7 +756,7 @@ Choose an option:
 Your account is ready to use!
         `;
         
-        this.bot.sendMessage(chatId, accountInfo);
+        this.bot.sendMessage(chatId, accountInfo, { parse_mode: 'Markdown' });
         return;
       }
 
@@ -809,7 +802,7 @@ EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv
 Your account is already active and your Telegram ID remains permanent!
         `;
         
-        this.bot.sendMessage(chatId, accountInfo);
+        this.bot.sendMessage(chatId, accountInfo, { parse_mode: 'Markdown' });
         return;
       }
 
@@ -836,7 +829,7 @@ Your account is already active and your Telegram ID remains permanent!
 Your account is now active! You can start earning by completing tasks or create your own campaigns.
       `;
 
-      this.bot.sendMessage(chatId, successMessage);
+      this.bot.sendMessage(chatId, successMessage, { parse_mode: 'Markdown' });
     } catch (error) {
       console.error('Error creating user account:', error);
       this.bot.sendMessage(chatId, '❌ Error creating account. Please try again.');
