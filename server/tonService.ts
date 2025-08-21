@@ -184,6 +184,7 @@ export class TonService {
     destinationAddress: string, 
     amount: string
   ): Promise<{ success: boolean; hash?: string; error?: string }> {
+    console.log(`[TON SERVICE DEBUG] processWithdrawal called with destination: ${destinationAddress}, amount: ${amount}`);
     try {
       // Validate mnemonic is available
       if (!WALLET_MNEMONIC) {
@@ -194,7 +195,12 @@ export class TonService {
       }
 
       // Validate destination address
-      if (!this.validateAddress(destinationAddress)) {
+      console.log(`[TON SERVICE DEBUG] Validating address: ${destinationAddress}`);
+      const isValidAddress = this.validateAddress(destinationAddress);
+      console.log(`[TON SERVICE DEBUG] Address validation result: ${isValidAddress}`);
+      
+      if (!isValidAddress) {
+        console.log(`[TON SERVICE DEBUG] Address validation failed for: ${destinationAddress}`);
         return {
           success: false,
           error: 'Invalid destination address',
@@ -254,6 +260,7 @@ export class TonService {
         console.log(`[INFO] Current sequence number: ${seqno}`);
         
         // Send transaction with retry logic
+        console.log(`[TON SERVICE DEBUG] Sending transaction with seqno: ${seqno}`);
         await this.retryApiCall(async () => {
           return await contract.sendTransfer({
             secretKey: keyPair.secretKey,
@@ -261,6 +268,7 @@ export class TonService {
             messages: [transfer],
           });
         });
+        console.log(`[TON SERVICE DEBUG] Transaction send completed`);
         
         console.log(`[SUCCESS] Transaction sent! Waiting for confirmation...`);
         
@@ -301,6 +309,7 @@ export class TonService {
         
       } catch (sendError) {
         console.error('[ERROR] Failed to send transaction:', sendError);
+        console.error('[ERROR] Full error details:', JSON.stringify(sendError, null, 2));
         
         // If it's a rate limit error, still mark as successful since transaction likely went through
         if (sendError instanceof Error && sendError.message.includes('429')) {
@@ -312,9 +321,11 @@ export class TonService {
           };
         }
         
+        const errorMessage = sendError instanceof Error ? sendError.message : 'Unknown blockchain error';
+        console.log(`[ERROR] Returning failure with message: ${errorMessage}`);
         return {
           success: false,
-          error: `Transaction failed: ${sendError instanceof Error ? sendError.message : 'Unknown blockchain error'}`,
+          error: `Transaction failed: ${errorMessage}`,
         };
       }
 
