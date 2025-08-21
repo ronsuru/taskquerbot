@@ -25,7 +25,8 @@ const awaitingWithdrawalAmount = new Map<string, string>(); // telegramId -> use
 
 // Admin settings state management
 const awaitingSettingChange = new Map<string, string>(); // telegramId -> settingKey
-const awaitingUserLookup = new Map<string, boolean>(); // telegramId -> boolean
+const awaitingDepositLookup = new Map<string, boolean>(); // telegramId -> boolean
+const awaitingWithdrawalLookup = new Map<string, boolean>(); // telegramId -> boolean
 
 export class TaskBot {
   private bot: TelegramBot;
@@ -156,10 +157,17 @@ Use /menu to see all available commands.
         return;
       }
 
-      // Check if admin is entering a user lookup Telegram ID
-      if (awaitingUserLookup.has(telegramId) && text && /^\d{8,12}$/.test(text)) {
-        awaitingUserLookup.delete(telegramId);
-        await this.showUserAccountInfo(chatId, telegramId, text);
+      // Check if admin is entering a Telegram ID for deposit analysis
+      if (awaitingDepositLookup.has(telegramId) && text && /^\d{8,12}$/.test(text)) {
+        awaitingDepositLookup.delete(telegramId);
+        await this.showDepositAnalysis(chatId, telegramId, text);
+        return;
+      }
+
+      // Check if admin is entering a Telegram ID for withdrawal analysis
+      if (awaitingWithdrawalLookup.has(telegramId) && text && /^\d{8,12}$/.test(text)) {
+        awaitingWithdrawalLookup.delete(telegramId);
+        await this.showWithdrawalAnalysis(chatId, telegramId, text);
         return;
       }
     });
@@ -591,20 +599,29 @@ System uptime: ${process.uptime().toFixed(0)} seconds
 
   private async showUserLookupPrompt(chatId: number, telegramId: string) {
     const message = `
-🔍 User Account Lookup
+🔍 ADMIN USER LOOKUP
 
-Enter the Telegram ID of the user you want to lookup:
+Select the type of analysis you want to perform:
 
-Example: 1234567890
+💰 DEPOSIT ANALYSIS:
+• Balance verification and mismatch detection
+• Transaction history review
+• Balance correction tools
 
-This will show their account balance, transaction history, and verification status.
+💸 WITHDRAWAL ANALYSIS:
+• Failed withdrawal identification
+• Pending transaction monitoring
+• Refund processing tools
+
+Choose analysis type below:
     `;
 
-    awaitingUserLookup.set(telegramId, true);
     this.bot.sendMessage(chatId, message, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: '❌ Cancel', callback_data: 'admin_panel' }]
+          [{ text: '💰 Deposit Analysis', callback_data: 'lookup_deposits' }],
+          [{ text: '💸 Withdrawal Analysis', callback_data: 'lookup_withdrawals' }],
+          [{ text: '❌ Back to Admin Panel', callback_data: 'admin_panel' }]
         ]
       }
     });
@@ -871,6 +888,54 @@ This will show their account balance, transaction history, and verification stat
     }
   }
 
+  private async promptDepositLookupId(chatId: number, telegramId: string) {
+    const message = `
+💰 DEPOSIT ANALYSIS
+
+Enter the Telegram ID of the user for deposit analysis:
+
+Example: 1234567890
+
+🔍 This will analyze:
+• Balance verification (stored vs calculated)
+• Deposit transaction history
+• Balance correction tools if needed
+    `;
+
+    awaitingDepositLookup.set(telegramId, true);
+    this.bot.sendMessage(chatId, message, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '❌ Cancel', callback_data: 'admin_user_lookup' }]
+        ]
+      }
+    });
+  }
+
+  private async promptWithdrawalLookupId(chatId: number, telegramId: string) {
+    const message = `
+💸 WITHDRAWAL ANALYSIS
+
+Enter the Telegram ID of the user for withdrawal analysis:
+
+Example: 1234567890
+
+🔍 This will analyze:
+• Failed withdrawal detection
+• Pending transaction status
+• Refund processing tools if needed
+    `;
+
+    awaitingWithdrawalLookup.set(telegramId, true);
+    this.bot.sendMessage(chatId, message, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '❌ Cancel', callback_data: 'admin_user_lookup' }]
+        ]
+      }
+    });
+  }
+
   private async showDepositAnalysis(chatId: number, adminTelegramId: string, targetTelegramId: string) {
     try {
       const user = await storage.getUserByTelegramId(targetTelegramId);
@@ -927,10 +992,10 @@ ${balanceDiscrepancy ? '⚠️ DEPOSIT ISSUE DETECTED - Balance correction may b
 
       const buttons = [];
       if (balanceDiscrepancy) {
-        buttons.push([{ text: '🔧 Fix Balance Mismatch', callback_data: `fix_balance_${targetTelegramId}_${calculatedBalance.toFixed(8)}` }]);
+        buttons.push([{ text: '🛠️ Apply Balance Fix', callback_data: `fix_balance_${targetTelegramId}_${calculatedBalance.toFixed(8)}` }]);
       }
       buttons.push(
-        [{ text: '🔙 Back to User Lookup', callback_data: 'admin_user_lookup' }],
+        [{ text: '🔙 Back to Lookup Menu', callback_data: 'admin_user_lookup' }],
         [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
       );
 
@@ -1003,13 +1068,13 @@ ${failedWithdrawals.length > 0 ? '⚠️ WITHDRAWAL ISSUES DETECTED - Refunds ma
         failedWithdrawals.slice(0, 3).forEach((w, i) => {
           const totalRefund = parseFloat(w.amount) + parseFloat(w.fee);
           buttons.push([{ 
-            text: `🔄 Refund ${totalRefund.toFixed(4)} USDT (Failed #${i + 1})`, 
+            text: `🛠️ Apply Refund ${totalRefund.toFixed(4)} USDT (#${i + 1})`, 
             callback_data: `fix_withdrawal_${w.id}_${user.id}_${totalRefund.toFixed(4)}` 
           }]);
         });
       }
       buttons.push(
-        [{ text: '🔙 Back to User Lookup', callback_data: 'admin_user_lookup' }],
+        [{ text: '🔙 Back to Lookup Menu', callback_data: 'admin_user_lookup' }],
         [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
       );
 
@@ -2517,21 +2582,18 @@ Please check:
         }
       }
 
-      // Handle deposit analysis
-      if (data.startsWith('analyze_deposits_')) {
+      // Handle lookup type selection
+      if (data === 'lookup_deposits') {
         if (this.isAdmin(telegramId)) {
-          const targetTelegramId = data.split('_')[2];
-          await this.showDepositAnalysis(msg.chat.id, telegramId, targetTelegramId);
+          await this.promptDepositLookupId(msg.chat.id, telegramId);
         } else {
           this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
         }
       }
 
-      // Handle withdrawal analysis
-      if (data.startsWith('analyze_withdrawals_')) {
+      if (data === 'lookup_withdrawals') {
         if (this.isAdmin(telegramId)) {
-          const targetTelegramId = data.split('_')[2];
-          await this.showWithdrawalAnalysis(msg.chat.id, telegramId, targetTelegramId);
+          await this.promptWithdrawalLookupId(msg.chat.id, telegramId);
         } else {
           this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
         }
