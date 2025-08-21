@@ -176,7 +176,7 @@ Choose an option:
         const accountInfo = `
 ✅ Account Already Active
 
-👤 User ID: ${existingUser.id}
+👤 Telegram ID: ${existingUser.telegramId}
 💰 Balance: ${existingUser.balance} USDT
 🏆 Total Rewards: ${existingUser.rewards} USDT
 📊 Tasks Completed: ${existingUser.completedTasks}
@@ -221,13 +221,13 @@ EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv
         const accountInfo = `
 ✅ Account Already Exists!
 
-👤 User ID: ${existingUser.id}
+👤 Telegram ID: ${existingUser.telegramId}
 💰 Balance: ${existingUser.balance} USDT
 🏆 Total Rewards: ${existingUser.rewards} USDT
 📊 Tasks Completed: ${existingUser.completedTasks}
 💼 Wallet: ${existingUser.walletAddress}
 
-Your account is already active and your User ID remains permanent!
+Your account is already active and your Telegram ID remains permanent!
         `;
         
         this.bot.sendMessage(chatId, accountInfo);
@@ -247,12 +247,12 @@ Your account is already active and your User ID remains permanent!
       const successMessage = `
 ✅ Account Created Successfully!
 
-👤 User ID: ${user.id}
+👤 Telegram ID: ${user.telegramId}
 💰 Balance: ${user.balance} USDT
 🏆 Rewards: ${user.rewards} USDT
 📊 Tasks Completed: ${user.completedTasks}
 
-🔒 Your User ID is now PERMANENT and will never change!
+🔒 Your Telegram ID is PERMANENT and will never change!
 
 Your account is now active! You can start earning by completing tasks or create your own campaigns.
       `;
