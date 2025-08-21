@@ -902,7 +902,13 @@ Example: a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890
       // Check if hash was already used
       const existingTransaction = await storage.getTransactionByHash(hash);
       if (existingTransaction) {
-        this.bot.sendMessage(chatId, '❌ This transaction hash was already used. Balance remains the same. Contact support if this is a mistake.');
+        this.bot.sendMessage(chatId, `❌ **Transaction Already Processed**
+
+This transaction hash has been used previously and your account was already credited.
+
+🔒 Your current balance remains unchanged for security.
+
+If you believe this is an error or you sent a new transaction, please contact support with your transaction details.`);
         return;
       }
 
