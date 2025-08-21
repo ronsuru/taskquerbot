@@ -14,7 +14,7 @@ import type { Campaign, User as UserType, Transaction } from "@shared/schema";
 export default function Dashboard() {
   const [selectedTask, setSelectedTask] = useState<Campaign | null>(null);
   const [platformFilter, setPlatformFilter] = useState("all");
-  const [userId] = useState("TG789012"); // In real app, get from auth context
+  const [userId] = useState("5154336054"); // Real Telegram ID - permanent and unique
 
   // Fetch user data
   const { data: user } = useQuery<UserType>({
