@@ -22,33 +22,66 @@ export class TonService {
     recipient?: string;
   }> {
     try {
+      console.log(`Verifying transaction: ${hash}`);
+      console.log(`Using API key: ${TON_API_KEY ? 'Present' : 'Missing'}`);
+      
       const response = await fetch(`https://tonapi.io/v2/blockchain/transactions/${hash}`, {
         headers: {
           'Authorization': `Bearer ${TON_API_KEY}`,
         },
       });
 
+      console.log(`TonAPI response status: ${response.status}`);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('TonAPI error:', errorText);
         return { valid: false };
       }
 
       const data = await response.json();
+      console.log('Transaction data:', JSON.stringify(data, null, 2));
       
-      // Check if transaction is to escrow wallet
-      const isToEscrow = data.out_msgs?.some((msg: any) => 
-        msg.destination?.address === ESCROW_WALLET
-      );
-
-      if (!isToEscrow) {
+      // Check if transaction has out_msgs (outgoing messages)
+      if (!data.out_msgs || data.out_msgs.length === 0) {
+        console.log('No outgoing messages found');
         return { valid: false };
       }
 
-      const amount = data.out_msgs?.[0]?.value;
+      // Check if any message goes to escrow wallet
+      const escrowWalletRaw = "0:543482bb7e4afaa9b80c3eafb6956f1f178979e8872b3b0cc4a558c715fcd4637"; // Raw format
+      
+      const isToEscrow = data.out_msgs.some((msg: any) => {
+        const destination = msg.destination?.address;
+        console.log(`Checking destination: ${destination} vs escrow: ${ESCROW_WALLET}`);
+        
+        // Check both user-friendly and raw format
+        return destination === ESCROW_WALLET || 
+               destination === escrowWalletRaw ||
+               (destination && destination.includes("543482bb7e4afaa9b80c3eafb6956f1f178979e8872b3b0cc4a558c715fcd4637"));
+      });
+
+      if (!isToEscrow) {
+        console.log('Transaction not sent to escrow wallet');
+        return { valid: false };
+      }
+
+      // Get the message sent to escrow
+      const escrowMsg = data.out_msgs.find((msg: any) => {
+        const destination = msg.destination?.address;
+        return destination === ESCROW_WALLET || 
+               destination === escrowWalletRaw ||
+               (destination && destination.includes("543482bb7e4afaa9b80c3eafb6956f1f178979e8872b3b0cc4a558c715fcd4637"));
+      });
+
+      const amount = escrowMsg?.value;
       const sender = data.account?.address;
+
+      console.log(`Amount: ${amount}, Sender: ${sender}`);
 
       return {
         valid: true,
-        amount: amount ? (parseInt(amount) / 1000000000).toString() : undefined,
+        amount: amount ? (parseInt(amount) / 1000000000).toString() : "0",
         sender,
         recipient: ESCROW_WALLET,
       };
