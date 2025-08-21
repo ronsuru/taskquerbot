@@ -476,8 +476,16 @@ Please enter the new value (numbers only):
         return;
       }
 
-      // Update the setting
-      await storage.setSystemSetting(settingKey, value, undefined, telegramId);
+      // Get the user by telegram ID to get their database UUID
+      const user = await storage.getUserByTelegramId(telegramId);
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ User not found. Please try again.');
+        awaitingSettingChange.delete(telegramId);
+        return;
+      }
+
+      // Update the setting using the user's database ID
+      await storage.setSystemSetting(settingKey, value, undefined, user.id);
       
       // Clear the waiting state
       awaitingSettingChange.delete(telegramId);
