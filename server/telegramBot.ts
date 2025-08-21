@@ -853,6 +853,15 @@ Please enter the reward amount (numbers only, e.g., 0.25):
       return;
     }
 
+    // Get configurable minimum reward settings
+    const minRewardSettings = await storage.getSystemSetting("min_reward_amount");
+    const minReward = minRewardSettings ? parseFloat(minRewardSettings.settingValue) : 0.015;
+    
+    if (reward < minReward) {
+      this.bot.sendMessage(chatId, `❌ Minimum reward amount is ${minReward} USDT. Please enter a higher amount.`);
+      return;
+    }
+
     state.reward = reward;
     state.step = 'slots';
     campaignCreationStates.set(telegramId, state);
@@ -893,6 +902,15 @@ Please enter the number of participants needed:
     const slots = parseInt(text);
     if (isNaN(slots) || slots <= 0) {
       this.bot.sendMessage(chatId, '❌ Please enter a valid number greater than 0 (e.g., 100)');
+      return;
+    }
+
+    // Get configurable minimum slots settings
+    const minSlotsSettings = await storage.getSystemSetting("min_slots");
+    const minSlots = minSlotsSettings ? parseInt(minSlotsSettings.settingValue) : 5;
+    
+    if (slots < minSlots) {
+      this.bot.sendMessage(chatId, `❌ Minimum slots required is ${minSlots}. Please enter a higher number.`);
       return;
     }
 
@@ -1149,12 +1167,19 @@ ${platformEmoji} **${state.title}**
         return;
       }
 
+      // Get configurable system settings
+      const minWithdrawalSettings = await storage.getSystemSetting("min_withdrawal_amount");
+      const withdrawalFeeSettings = await storage.getSystemSetting("withdrawal_fee");
+      
+      const minWithdrawal = minWithdrawalSettings ? parseFloat(minWithdrawalSettings.settingValue) : 0.020;
+      const withdrawalFee = withdrawalFeeSettings ? parseFloat(withdrawalFeeSettings.settingValue) : 0.50;
+
       const balance = parseFloat(user.balance);
       console.log(`[WITHDRAWAL DEBUG] User balance parsed: ${balance}`);
       
-      if (balance < 0.020) {
-        console.log(`[WITHDRAWAL DEBUG] Balance too low: ${balance} < 0.020`);
-        this.bot.sendMessage(chatId, '❌ Minimum withdrawal amount is 0.020 USDT. Complete more tasks to earn rewards!');
+      if (balance < minWithdrawal) {
+        console.log(`[WITHDRAWAL DEBUG] Balance too low: ${balance} < ${minWithdrawal}`);
+        this.bot.sendMessage(chatId, `❌ Minimum withdrawal amount is ${minWithdrawal} USDT. Complete more tasks to earn rewards!`);
         return;
       }
 
@@ -1164,8 +1189,8 @@ ${platformEmoji} **${state.title}**
 💰 Available Balance: ${user.balance} USDT
 
 📋 Withdrawal Details:
-• Minimum amount: 0.020 USDT  
-• Network fee: 1% of withdrawal amount
+• Minimum amount: ${minWithdrawal} USDT  
+• Network fee: ${withdrawalFee} USDT
 • Processing time: 5-15 minutes
 • Funds sent to your registered wallet
 
@@ -1478,24 +1503,30 @@ Please check:
         return;
       }
 
+      // Get configurable system settings
+      const minWithdrawalSettings = await storage.getSystemSetting("min_withdrawal_amount");
+      const withdrawalFeeSettings = await storage.getSystemSetting("withdrawal_fee");
+      
+      const minWithdrawal = minWithdrawalSettings ? parseFloat(minWithdrawalSettings.settingValue) : 0.020;
+      const withdrawalFee = withdrawalFeeSettings ? parseFloat(withdrawalFeeSettings.settingValue) : 0.50;
+
       const balance = parseFloat(user.balance);
       let withdrawAmount = balance;
       
       if (type === 'custom') {
         // Store the user ID for custom withdrawal amount input
         awaitingWithdrawalAmount.set(telegramId, userId);
-        this.bot.sendMessage(chatId, 'Please enter the amount you want to withdraw (minimum 0.020 USDT):');
+        this.bot.sendMessage(chatId, `Please enter the amount you want to withdraw (minimum ${minWithdrawal} USDT):`);
         return;
       }
 
-      const fee = withdrawAmount * 0.01;
-      const finalAmount = withdrawAmount - fee;
+      const finalAmount = withdrawAmount - withdrawalFee;
 
       // Process withdrawal
       const withdrawal = await storage.createWithdrawal({
         userId: user.id,
         amount: finalAmount.toString(),
-        fee: fee.toString(),
+        fee: withdrawalFee.toString(),
         destinationWallet: user.walletAddress,
         status: 'pending'
       });
@@ -1515,7 +1546,7 @@ Please check:
 ✅ Withdrawal Processed Successfully!
 
 💰 Amount: ${finalAmount.toFixed(8)} USDT
-💳 Fee: ${fee.toFixed(8)} USDT
+💳 Fee: ${withdrawalFee.toFixed(8)} USDT
 🏦 Sent to: ${user.walletAddress}
 🔗 Hash: ${result.hash}
 
@@ -1880,15 +1911,21 @@ The slot has been returned to the campaign pool.
       // Clear the awaiting state
       awaitingWithdrawalAmount.delete(telegramId);
 
+      // Get configurable system settings
+      const minWithdrawalSettings = await storage.getSystemSetting("min_withdrawal_amount");
+      const withdrawalFeeSettings = await storage.getSystemSetting("withdrawal_fee");
+      
+      const minWithdrawal = minWithdrawalSettings ? parseFloat(minWithdrawalSettings.settingValue) : 0.020;
+      const withdrawalFee = withdrawalFeeSettings ? parseFloat(withdrawalFeeSettings.settingValue) : 0.50;
+
       // Process the custom withdrawal
-      const fee = amount * 0.01;
-      const finalAmount = amount - fee;
+      const finalAmount = amount - withdrawalFee;
 
       // Create withdrawal record
       const withdrawal = await storage.createWithdrawal({
         userId: user.id,
         amount: finalAmount.toString(),
-        fee: fee.toString(),
+        fee: withdrawalFee.toString(),
         destinationWallet: user.walletAddress,
         status: 'pending'
       });
@@ -1909,7 +1946,7 @@ The slot has been returned to the campaign pool.
 ✅ Withdrawal Processed Successfully!
 
 💰 Amount: ${finalAmount.toFixed(8)} USDT
-💳 Fee: ${fee.toFixed(8)} USDT
+💳 Fee: ${withdrawalFee.toFixed(8)} USDT
 🏦 Sent to: ${user.walletAddress}
 🔗 Hash: ${result.hash}
 
