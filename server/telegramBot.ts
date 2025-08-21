@@ -851,7 +851,7 @@ Your account is now active! You can start earning by completing tasks or create 
 Send USDT (Jetton) to our escrow wallet:
 
 🏦 Escrow Wallet:
-\`${ESCROW_WALLET}\`
+\`EQBQLMDDw9022vZaXNXdWfh0om2sP_4AONerajNCnmcuLXJh\`
 
 ⚠️ Important:
 • Only send USDT on TON Network (Jetton)

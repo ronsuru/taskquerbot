@@ -152,7 +152,7 @@ export class TonService {
               
               // Check if transfer destination matches our escrow wallet
               if (transferDest === ESCROW_WALLET || transferDest === escrowWalletRaw ||
-                  (transferDest && transferDest.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"))) {
+                  (transferDest && transferDest.includes("502cc0c3c3dd36daf65a5cd5dd59f874a26dac3ffe0038d7ab6a33429e672e2d"))) {
                 foundUSDTTransfer = true;
                 transferAmount = decoded.amount || decoded.jetton_amount || "0";
                 console.log(`[USDT] ✅ Valid USDT transfer found! Amount: ${transferAmount}`);
@@ -191,7 +191,7 @@ export class TonService {
         // For TON, check both user-friendly and raw format
         return destination === ESCROW_WALLET || 
                destination === escrowWalletRaw ||
-               (destination && destination.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"));
+               (destination && destination.includes("502cc0c3c3dd36daf65a5cd5dd59f874a26dac3ffe0038d7ab6a33429e672e2d"));
       });
 
       if (!isToEscrow) {
@@ -204,7 +204,7 @@ export class TonService {
         const destination = msg.destination?.address;
         return destination === ESCROW_WALLET || 
                destination === escrowWalletRaw ||
-               (destination && destination.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"));
+               (destination && destination.includes("502cc0c3c3dd36daf65a5cd5dd59f874a26dac3ffe0038d7ab6a33429e672e2d"));
       });
 
       const amount = escrowMsg?.value;
