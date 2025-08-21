@@ -33,6 +33,8 @@ export interface IStorage {
   getCampaign(id: string): Promise<Campaign | undefined>;
   createCampaign(campaign: InsertCampaign): Promise<Campaign>;
   updateCampaignSlots(id: string, availableSlots: number): Promise<Campaign>;
+  updateCampaignStatus(id: string, status: string): Promise<Campaign>;
+  deleteCampaign(id: string): Promise<void>;
   getUserCampaigns(userId: string): Promise<Campaign[]>;
   
   // Transactions
@@ -136,6 +138,19 @@ export class DatabaseStorage implements IStorage {
       .where(eq(campaigns.id, id))
       .returning();
     return campaign;
+  }
+
+  async updateCampaignStatus(id: string, status: string): Promise<Campaign> {
+    const [campaign] = await db
+      .update(campaigns)
+      .set({ status })
+      .where(eq(campaigns.id, id))
+      .returning();
+    return campaign;
+  }
+
+  async deleteCampaign(id: string): Promise<void> {
+    await db.delete(campaigns).where(eq(campaigns.id, id));
   }
 
   async getUserCampaigns(userId: string): Promise<Campaign[]> {

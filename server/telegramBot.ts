@@ -271,6 +271,7 @@ Choose an admin function:
         reply_markup: {
           inline_keyboard: [
             [{ text: '💰 Balance Management', callback_data: 'admin_balance_menu' }],
+            [{ text: '📋 Task Management', callback_data: 'admin_task_menu' }],
             [{ text: '⚙️ Advanced Settings', callback_data: 'admin_settings_menu' }],
             [{ text: '📊 System Information', callback_data: 'admin_system_info' }],
             [{ text: '❌ Close Admin Panel', callback_data: 'close_admin_panel' }]
@@ -291,6 +292,7 @@ Choose an admin function:
         reply_markup: {
           inline_keyboard: [
             [{ text: '💰 Balance Management', callback_data: 'admin_balance_menu' }],
+            [{ text: '📋 Task Management', callback_data: 'admin_task_menu' }],
             [{ text: '⚙️ Advanced Settings', callback_data: 'admin_settings_menu' }],
             [{ text: '📊 System Information', callback_data: 'admin_system_info' }],
             [{ text: '❌ Close Admin Panel', callback_data: 'close_admin_panel' }]
@@ -322,6 +324,178 @@ Example: /setbalance 5154336054 50.00
     });
   }
 
+  private async showTaskManagementMenu(chatId: number, telegramId: string, page: number = 0) {
+    try {
+      const campaigns = await storage.getAllCampaigns();
+      const pageSize = 5;
+      const startIndex = page * pageSize;
+      const endIndex = startIndex + pageSize;
+      const pageCampaigns = campaigns.slice(startIndex, endIndex);
+      
+      if (pageCampaigns.length === 0 && page === 0) {
+        this.bot.sendMessage(chatId, `
+📋 Task Management
+
+❌ No campaigns found in the system.
+
+All campaigns have been completed or deleted.
+        `, {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
+            ]
+          }
+        });
+        return;
+      }
+
+      let campaignsList = '';
+      pageCampaigns.forEach((campaign, index) => {
+        const globalIndex = startIndex + index + 1;
+        const status = campaign.status === 'active' ? '🟢' : campaign.status === 'paused' ? '🟡' : '🔴';
+        const expiresDate = new Date(campaign.expiresAt).toLocaleDateString();
+        campaignsList += `
+${globalIndex}. ${status} ${campaign.title}
+   👤 ${campaign.creator.telegramId} | ${campaign.platform.toUpperCase()}
+   💰 ${campaign.rewardAmount} USDT × ${campaign.totalSlots} slots
+   📅 Expires: ${expiresDate}
+   📊 Status: ${campaign.status}
+`;
+      });
+
+      const totalPages = Math.ceil(campaigns.length / pageSize);
+      const pageInfo = totalPages > 1 ? `\n📄 Page ${page + 1}/${totalPages}` : '';
+
+      this.bot.sendMessage(chatId, `
+📋 Task Management${pageInfo}
+
+${campaignsList}
+
+Select a campaign to manage:
+      `, {
+        reply_markup: {
+          inline_keyboard: [
+            ...pageCampaigns.map((campaign, index) => {
+              const globalIndex = startIndex + index + 1;
+              return [{ text: `⚙️ Manage Campaign ${globalIndex}`, callback_data: `manage_campaign_${campaign.id}` }];
+            }),
+            ...(totalPages > 1 ? [[
+              ...(page > 0 ? [{ text: '⬅️ Previous', callback_data: `task_menu_page_${page - 1}` }] : []),
+              ...(page < totalPages - 1 ? [{ text: '➡️ Next', callback_data: `task_menu_page_${page + 1}` }] : [])
+            ]] : []),
+            [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error loading campaigns for task management:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading campaigns. Please try again.');
+    }
+  }
+
+  private async showCampaignManageOptions(chatId: number, telegramId: string, campaignId: string) {
+    try {
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        this.bot.sendMessage(chatId, '❌ Campaign not found.');
+        return;
+      }
+
+      const creator = await storage.getUser(campaign.creatorId);
+      const statusIcon = campaign.status === 'active' ? '🟢' : campaign.status === 'paused' ? '🟡' : '🔴';
+      const expiresDate = new Date(campaign.expiresAt).toLocaleDateString();
+      
+      const campaignInfo = `
+📋 Campaign Management
+
+${statusIcon} **${campaign.title}**
+👤 Creator: ${creator?.telegramId || 'Unknown'}
+🎪 Platform: ${campaign.platform.toUpperCase()}
+💰 Reward: ${campaign.rewardAmount} USDT per task
+👥 Slots: ${campaign.availableSlots}/${campaign.totalSlots}
+📅 Expires: ${expiresDate}
+📊 Status: ${campaign.status.toUpperCase()}
+🔗 URL: ${campaign.taskUrl || 'Not provided'}
+
+Choose an action:
+      `;
+
+      const actionButtons = [];
+      
+      if (campaign.status === 'active') {
+        actionButtons.push([{ text: '⏸️ Pause Campaign', callback_data: `pause_campaign_${campaignId}` }]);
+      } else if (campaign.status === 'paused') {
+        actionButtons.push([{ text: '▶️ Reactivate Campaign', callback_data: `reactivate_campaign_${campaignId}` }]);
+      }
+      
+      actionButtons.push([{ text: '🗑️ Delete Campaign', callback_data: `delete_campaign_${campaignId}` }]);
+      actionButtons.push([{ text: '🔙 Back to Task Management', callback_data: 'admin_task_menu' }]);
+
+      this.bot.sendMessage(chatId, campaignInfo, {
+        reply_markup: {
+          inline_keyboard: actionButtons
+        }
+      });
+    } catch (error) {
+      console.error('Error loading campaign details:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading campaign details. Please try again.');
+    }
+  }
+
+  private async handleCampaignAction(chatId: number, telegramId: string, action: string, campaignId: string) {
+    try {
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        this.bot.sendMessage(chatId, '❌ Campaign not found.');
+        return;
+      }
+
+      switch (action) {
+        case 'pause':
+          await storage.updateCampaignStatus(campaignId, 'paused');
+          this.bot.sendMessage(chatId, `⏸️ Campaign "${campaign.title}" has been paused.`, {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔙 Back to Task Management', callback_data: 'admin_task_menu' }]
+              ]
+            }
+          });
+          console.log(`[ADMIN] Campaign ${campaignId} paused by admin ${telegramId}`);
+          break;
+
+        case 'reactivate':
+          await storage.updateCampaignStatus(campaignId, 'active');
+          this.bot.sendMessage(chatId, `▶️ Campaign "${campaign.title}" has been reactivated.`, {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔙 Back to Task Management', callback_data: 'admin_task_menu' }]
+              ]
+            }
+          });
+          console.log(`[ADMIN] Campaign ${campaignId} reactivated by admin ${telegramId}`);
+          break;
+
+        case 'delete':
+          await storage.deleteCampaign(campaignId);
+          this.bot.sendMessage(chatId, `🗑️ Campaign "${campaign.title}" has been permanently deleted.`, {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔙 Back to Task Management', callback_data: 'admin_task_menu' }]
+              ]
+            }
+          });
+          console.log(`[ADMIN] Campaign ${campaignId} deleted by admin ${telegramId}`);
+          break;
+
+        default:
+          this.bot.sendMessage(chatId, '❌ Unknown action.');
+      }
+    } catch (error) {
+      console.error(`Error handling campaign action ${action}:`, error);
+      this.bot.sendMessage(chatId, '❌ Error performing action. Please try again.');
+    }
+  }
+
   private async showAdminSettingsMenu(chatId: number, telegramId: string) {
     try {
       const settings = await storage.getAllSystemSettings();
@@ -345,6 +519,7 @@ Current Configuration:
 • Campaign Fee: ${campaignFeePercent}% of campaign total
 • Min Slots: ${settingsMap['min_slots'] || '5'} slots
 • Min Reward: ${settingsMap['min_reward_amount'] || '0.015'} USDT
+• Min Campaign Duration: ${settingsMap['min_campaign_duration'] || '3'} days
 
 Select a setting to modify:
       `;
@@ -357,6 +532,7 @@ Select a setting to modify:
             [{ text: '🏦 Campaign Creation Fee', callback_data: 'admin_set_campaign_fee' }],
             [{ text: '📊 Min Campaign Slots', callback_data: 'admin_set_min_slots' }],
             [{ text: '💰 Min Reward Amount', callback_data: 'admin_set_min_reward' }],
+            [{ text: '⏰ Min Campaign Duration', callback_data: 'admin_set_min_duration' }],
             [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
           ]
         }
@@ -429,6 +605,12 @@ System uptime: ${process.uptime().toFixed(0)} seconds
         name: 'Minimum Reward Amount',
         unit: 'USDT',
         description: 'Minimum reward amount per task'
+      },
+      'min_duration': {
+        key: 'min_campaign_duration',
+        name: 'Minimum Campaign Duration',
+        unit: 'days',
+        description: 'Minimum duration for campaigns (1-30 days)'
       }
     };
 
@@ -1274,8 +1456,13 @@ Please enter the number of days (1-30):
 
   private async handleDurationStep(chatId: number, telegramId: string, text: string, state: CampaignCreationState) {
     const duration = parseInt(text);
-    if (isNaN(duration) || duration <= 0 || duration > 30) {
-      this.bot.sendMessage(chatId, '❌ Please enter a valid number between 1 and 30 days.');
+    
+    // Get configurable minimum duration settings
+    const minDurationSettings = await storage.getSystemSetting("min_campaign_duration");
+    const minDuration = minDurationSettings ? parseInt(minDurationSettings.settingValue) : 3;
+    
+    if (isNaN(duration) || duration < minDuration || duration > 30) {
+      this.bot.sendMessage(chatId, `❌ Please enter a valid number between ${minDuration} and 30 days.`);
       return;
     }
 
@@ -1794,6 +1981,14 @@ Please check:
         }
       }
 
+      if (data === 'admin_task_menu') {
+        if (this.isAdmin(telegramId)) {
+          await this.showTaskManagementMenu(msg.chat.id, telegramId);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
       if (data === 'admin_system_info') {
         if (this.isAdmin(telegramId)) {
           await this.showSystemInfo(msg.chat.id, telegramId);
@@ -1807,6 +2002,52 @@ Please check:
           chat_id: msg.chat.id,
           message_id: msg.message_id
         });
+      }
+
+      // Task management callbacks
+      if (data.startsWith('task_menu_page_')) {
+        if (!this.isAdmin(telegramId)) {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+          return;
+        }
+        const page = parseInt(data.replace('task_menu_page_', ''));
+        await this.showTaskManagementMenu(msg.chat.id, telegramId, page);
+      }
+
+      if (data.startsWith('manage_campaign_')) {
+        if (!this.isAdmin(telegramId)) {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+          return;
+        }
+        const campaignId = data.replace('manage_campaign_', '');
+        await this.showCampaignManageOptions(msg.chat.id, telegramId, campaignId);
+      }
+
+      if (data.startsWith('pause_campaign_')) {
+        if (!this.isAdmin(telegramId)) {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+          return;
+        }
+        const campaignId = data.replace('pause_campaign_', '');
+        await this.handleCampaignAction(msg.chat.id, telegramId, 'pause', campaignId);
+      }
+
+      if (data.startsWith('reactivate_campaign_')) {
+        if (!this.isAdmin(telegramId)) {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+          return;
+        }
+        const campaignId = data.replace('reactivate_campaign_', '');
+        await this.handleCampaignAction(msg.chat.id, telegramId, 'reactivate', campaignId);
+      }
+
+      if (data.startsWith('delete_campaign_')) {
+        if (!this.isAdmin(telegramId)) {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+          return;
+        }
+        const campaignId = data.replace('delete_campaign_', '');
+        await this.handleCampaignAction(msg.chat.id, telegramId, 'delete', campaignId);
       }
 
       // Individual setting callbacks
