@@ -589,11 +589,13 @@ Funds will arrive in 5-15 minutes.
 }
 
 // Initialize and start the bot
+let taskBotInstance: TaskBot | null = null;
+
 if (BOT_TOKEN) {
-  const taskBot = new TaskBot();
-  taskBot.start();
+  taskBotInstance = new TaskBot();
+  taskBotInstance.start();
 } else {
   console.warn('TELEGRAM_BOT_TOKEN not provided. Bot will not start.');
 }
 
-export { TaskBot };
+export { TaskBot, taskBotInstance };
