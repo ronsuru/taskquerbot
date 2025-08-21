@@ -27,6 +27,7 @@ export const campaigns = pgTable("campaigns", {
   rewardAmount: decimal("reward_amount", { precision: 18, scale: 8 }).notNull(),
   escrowAmount: decimal("escrow_amount", { precision: 18, scale: 8 }).notNull(),
   fee: decimal("fee", { precision: 18, scale: 8 }).notNull(),
+  proofType: text("proof_type").notNull().default("image"), // "image" or "link"
   status: text("status").notNull().default("active"), // active, completed, paused
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });

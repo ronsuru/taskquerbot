@@ -22,6 +22,7 @@ export default function CampaignForm({ userId }: CampaignFormProps) {
     taskType: "",
     totalSlots: 5,
     rewardAmount: "0.015",
+    proofType: "image",
   });
 
   const { toast } = useToast();
@@ -46,6 +47,7 @@ export default function CampaignForm({ userId }: CampaignFormProps) {
         taskType: "",
         totalSlots: 5,
         rewardAmount: "0.015",
+        proofType: "image",
       });
     },
     onError: (error: any) => {
@@ -144,6 +146,25 @@ export default function CampaignForm({ userId }: CampaignFormProps) {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="proofType">Required Proof Type *</Label>
+            <Select value={formData.proofType} onValueChange={(value) => setFormData(prev => ({ ...prev, proofType: value }))}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select proof type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="image">📸 Image/Screenshot - Users upload proof images</SelectItem>
+                <SelectItem value="link">🔗 Link/Profile URL - Users submit profile or task links</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-slate-600">
+              {formData.proofType === "image" ? 
+                "Users will submit screenshots or images showing task completion" : 
+                "Users will submit links to their profiles or task URLs as proof"
+              }
+            </p>
           </div>
 
           <div className="space-y-2">

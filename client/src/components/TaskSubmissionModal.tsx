@@ -76,13 +76,35 @@ export default function TaskSubmissionModal({ campaign, userId, onClose }: TaskS
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.proofLinks[0] && !formData.proofUrl) {
-      toast({
-        title: "Validation Error",
-        description: "Please provide either a profile link or upload a screenshot",
-        variant: "destructive",
-      });
-      return;
+    // Validate based on campaign's proof type preference
+    if (campaign.proofType === "link") {
+      if (!formData.proofLinks[0] || formData.proofLinks[0].trim() === "") {
+        toast({
+          title: "Validation Error",
+          description: "Please provide a profile link or URL as proof",
+          variant: "destructive",
+        });
+        return;
+      }
+    } else if (campaign.proofType === "image") {
+      if (!formData.proofUrl) {
+        toast({
+          title: "Validation Error",
+          description: "Please upload a screenshot as proof",
+          variant: "destructive",
+        });
+        return;
+      }
+    } else {
+      // Default behavior for backward compatibility
+      if (!formData.proofLinks[0] && !formData.proofUrl) {
+        toast({
+          title: "Validation Error",
+          description: "Please provide either a profile link or upload a screenshot",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     submitTaskMutation.mutate({
@@ -125,43 +147,61 @@ export default function TaskSubmissionModal({ campaign, userId, onClose }: TaskS
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label>Profile Link or Username</Label>
-            {formData.proofLinks.map((link, index) => (
-              <div key={index} className="flex space-x-2">
-                <Input
-                  placeholder={`https://${campaign.platform}.com/yourusername or @yourusername`}
-                  value={link}
-                  onChange={(e) => updateProofLink(index, e.target.value)}
-                />
-                {index === formData.proofLinks.length - 1 && (
-                  <Button type="button" variant="outline" size="sm" onClick={addProofLink}>
-                    +
-                  </Button>
-                )}
+          {/* Show link input for link proof type */}
+          {(campaign.proofType === "link" || !campaign.proofType) && (
+            <div className="space-y-2">
+              <Label>Profile Link or Username</Label>
+              <div className="text-sm text-slate-600 mb-2">
+                {campaign.proofType === "link" 
+                  ? "📎 This campaign requires link/URL proof submissions"
+                  : "Provide your profile link or username"
+                }
               </div>
-            ))}
-          </div>
+              {formData.proofLinks.map((link, index) => (
+                <div key={index} className="flex space-x-2">
+                  <Input
+                    placeholder={`https://${campaign.platform}.com/yourusername or @yourusername`}
+                    value={link}
+                    onChange={(e) => updateProofLink(index, e.target.value)}
+                  />
+                  {index === formData.proofLinks.length - 1 && !campaign.proofType && (
+                    <Button type="button" variant="outline" size="sm" onClick={addProofLink}>
+                      +
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
-          <div className="space-y-2">
-            <Label>Screenshot Proof</Label>
-            <ObjectUploader
-              maxNumberOfFiles={1}
-              maxFileSize={5242880} // 5MB
-              onGetUploadParameters={handleGetUploadParameters}
-              onComplete={handleUploadComplete}
-              buttonClassName="w-full border-2 border-dashed border-slate-300 hover:border-telegram-blue transition-colors p-6 text-center"
-            >
-              <div className="flex flex-col items-center space-y-2">
-                <i className="fas fa-cloud-upload-alt text-slate-400 text-2xl"></i>
-                <p className="text-slate-600 text-sm">Click to upload screenshot</p>
-                <p className="text-slate-400 text-xs">PNG, JPG up to 5MB</p>
+          {/* Show image upload for image proof type */}
+          {(campaign.proofType === "image" || !campaign.proofType) && (
+            <div className="space-y-2">
+              <Label>Screenshot Proof</Label>
+              <div className="text-sm text-slate-600 mb-2">
+                {campaign.proofType === "image" 
+                  ? "📸 This campaign requires image/screenshot proof submissions"
+                  : "Upload a screenshot showing task completion"
+                }
               </div>
-            </ObjectUploader>
-            {formData.proofUrl && (
-              <p className="text-sm text-success-green">✓ Screenshot uploaded successfully</p>
-            )}
-          </div>
+              <ObjectUploader
+                maxNumberOfFiles={1}
+                maxFileSize={5242880} // 5MB
+                onGetUploadParameters={handleGetUploadParameters}
+                onComplete={handleUploadComplete}
+                buttonClassName="w-full border-2 border-dashed border-slate-300 hover:border-telegram-blue transition-colors p-6 text-center"
+              >
+                <div className="flex flex-col items-center space-y-2">
+                  <i className="fas fa-cloud-upload-alt text-slate-400 text-2xl"></i>
+                  <p className="text-slate-600 text-sm">Click to upload screenshot</p>
+                  <p className="text-slate-400 text-xs">PNG, JPG up to 5MB</p>
+                </div>
+              </ObjectUploader>
+              {formData.proofUrl && (
+                <p className="text-sm text-success-green">✓ Screenshot uploaded successfully</p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="notes">Additional Notes (Optional)</Label>
@@ -180,9 +220,25 @@ export default function TaskSubmissionModal({ campaign, userId, onClose }: TaskS
               <div className="text-sm text-blue-800">
                 <p className="font-medium mb-1">Submission Guidelines:</p>
                 <ul className="text-xs space-y-1 text-blue-700">
-                  <li>• Screenshots must clearly show task completion</li>
-                  <li>• Links must be accessible and valid</li>
-                  <li>• Rewards are distributed after approval (usually within 24 hours)</li>
+                  {campaign.proofType === "image" ? (
+                    <>
+                      <li>• Screenshots must clearly show task completion</li>
+                      <li>• Images should be clear and readable</li>
+                      <li>• Rewards are distributed after approval (usually within 24 hours)</li>
+                    </>
+                  ) : campaign.proofType === "link" ? (
+                    <>
+                      <li>• Links must be accessible and valid</li>
+                      <li>• Provide your actual profile or content URL</li>
+                      <li>• Rewards are distributed after approval (usually within 24 hours)</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>• Screenshots must clearly show task completion</li>
+                      <li>• Links must be accessible and valid</li>
+                      <li>• Rewards are distributed after approval (usually within 24 hours)</li>
+                    </>
+                  )}
                 </ul>
               </div>
             </div>

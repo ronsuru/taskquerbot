@@ -7,13 +7,14 @@ const ESCROW_WALLET = "EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv";
 
 // Campaign creation state management
 interface CampaignCreationState {
-  step: 'platform' | 'title' | 'description' | 'reward' | 'slots' | 'url' | 'confirm';
+  step: 'platform' | 'title' | 'description' | 'reward' | 'slots' | 'url' | 'proofType' | 'confirm';
   platform?: string;
   title?: string;
   description?: string;
   reward?: number;
   slots?: number;
   url?: string;
+  proofType?: string;
 }
 
 const campaignCreationStates = new Map<string, CampaignCreationState>();
@@ -753,6 +754,9 @@ Please type your campaign title:
         case 'url':
           await this.handleUrlStep(chatId, telegramId, text, state);
           break;
+        case 'proofType':
+          await this.handleProofTypeStep(chatId, telegramId, text, state);
+          break;
         case 'confirm':
           await this.handleConfirmStep(chatId, telegramId, text, state, user);
           break;
@@ -938,6 +942,51 @@ Paste your ${state.platform} URL here:
     }
 
     state.url = text.trim();
+    state.step = 'proofType';
+    campaignCreationStates.set(telegramId, state);
+
+    const platformEmoji = {
+      'twitter': '🐦',
+      'tiktok': '📱',
+      'facebook': '📘',
+      'telegram': '💬'
+    }[state.platform!] || '🎯';
+
+    this.bot.sendMessage(chatId, `
+${platformEmoji} Creating ${state.platform!.toUpperCase()} Campaign
+
+📸 **Step 7: Proof Type**
+
+What type of proof should users submit when they complete tasks?
+
+📸 **Image/Screenshot**: Users upload photos showing task completion
+• Good for: Likes, follows, comments, shares
+• Example: Screenshot of liked post, followed account
+
+🔗 **Link/Profile URL**: Users submit links or profile URLs as proof  
+• Good for: Profile follows, account interactions
+• Example: Link to their profile, specific post URL
+
+Choose the proof type that works best for your campaign:
+    `, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📸 Image/Screenshot', callback_data: 'prooftype_image' }],
+          [{ text: '🔗 Link/Profile URL', callback_data: 'prooftype_link' }],
+          [{ text: '🔙 Back to URL', callback_data: 'back_to_url' }],
+          [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }]
+        ]
+      }
+    });
+  }
+
+  private async handleProofTypeStep(chatId: number, telegramId: string, proofType: string, state: CampaignCreationState) {
+    if (proofType !== 'image' && proofType !== 'link') {
+      this.bot.sendMessage(chatId, '❌ Please select a valid proof type.');
+      return;
+    }
+
+    state.proofType = proofType;
     state.step = 'confirm';
     campaignCreationStates.set(telegramId, state);
 
@@ -949,6 +998,11 @@ Paste your ${state.platform} URL here:
       'telegram': '💬'
     }[state.platform!] || '🎯';
 
+    const proofTypeText = proofType === 'image' ? '📸 Image/Screenshot' : '🔗 Link/Profile URL';
+    const proofDescription = proofType === 'image' 
+      ? 'Users will submit screenshots showing task completion'
+      : 'Users will submit profile links or task URLs as proof';
+
     this.bot.sendMessage(chatId, `
 ${platformEmoji} **Campaign Summary**
 
@@ -958,6 +1012,8 @@ ${platformEmoji} **Campaign Summary**
 💰 **Reward:** ${state.reward} USDT per task
 👥 **Participants:** ${state.slots} people
 🔗 **URL:** ${state.url}
+📋 **Proof Type:** ${proofTypeText}
+📌 **Proof Info:** ${proofDescription}
 
 💸 **Total Cost:** ${totalCost} USDT
 
@@ -966,7 +1022,7 @@ Are you sure you want to create this campaign?
       reply_markup: {
         inline_keyboard: [
           [{ text: '✅ Create Campaign', callback_data: 'confirm_campaign_creation' }],
-          [{ text: '🔙 Back to URL', callback_data: 'back_to_url' }],
+          [{ text: '🔙 Back to Proof Type', callback_data: 'back_to_prooftype' }],
           [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }]
         ]
       }
@@ -1020,7 +1076,8 @@ Please fund your account first using "💰 Fund Account"
         rewardAmount: state.reward!.toString(),
         escrowAmount: totalCost.toString(),
         fee: "0", // No additional fee for basic campaigns
-        status: 'active'
+        status: 'active',
+        proofType: state.proofType || 'image' // Default to image if not specified
       });
 
       // Deduct the cost from user balance
@@ -1046,6 +1103,8 @@ Please fund your account first using "💰 Fund Account"
         'telegram': '💬'
       }[state.platform!] || '🎯';
 
+      const proofTypeText = state.proofType === 'image' ? '📸 Image/Screenshot' : '🔗 Link/Profile URL';
+
       this.bot.sendMessage(chatId, `
 ✅ Campaign Created Successfully!
 
@@ -1055,6 +1114,7 @@ ${platformEmoji} **${state.title}**
 💰 Reward: ${state.reward} USDT per task
 👥 Slots: ${state.slots} people needed
 🔗 URL: ${state.url}
+📋 Proof Type: ${proofTypeText}
 
 💸 **Payment Details:**
 • Total cost: ${totalCost} USDT
@@ -1141,7 +1201,7 @@ For assistance with tasks, payments, or campaigns, contact our support team:
 
 📋 Template Message:
 \`\`\`
-User ID: ${userId}
+Telegram ID: ${telegramId}
 Transaction Hash: [Your transaction hash if applicable]
 Issue Description: [Describe your issue here]
 \`\`\`
@@ -1252,6 +1312,11 @@ Please check:
       if (data.startsWith('slots_')) {
         const slots = data.replace('slots_', '');
         await this.handleSlotsStep(msg.chat.id, telegramId, slots, campaignCreationStates.get(telegramId)!);
+      }
+
+      if (data.startsWith('prooftype_')) {
+        const proofType = data.replace('prooftype_', '');
+        await this.handleProofTypeStep(msg.chat.id, telegramId, proofType, campaignCreationStates.get(telegramId)!);
       }
 
       if (data === 'confirm_campaign_creation') {
