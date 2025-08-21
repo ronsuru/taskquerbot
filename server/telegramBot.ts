@@ -18,6 +18,9 @@ interface CampaignCreationState {
 
 const campaignCreationStates = new Map<string, CampaignCreationState>();
 
+// Withdrawal state management
+const awaitingWithdrawalAmount = new Map<string, string>(); // telegramId -> userId
+
 export class TaskBot {
   private bot: TelegramBot;
 
@@ -110,6 +113,14 @@ Use /menu to see all available commands.
       const state = campaignCreationStates.get(telegramId);
       if (state && text && !text.startsWith('/') && !text.match(/^(EQ|UQ)[A-Za-z0-9_-]{46}$/) && !text.match(/^[a-fA-F0-9]{64}$/)) {
         await this.handleCampaignCreationStep(chatId, telegramId, text, state);
+        return;
+      }
+
+      // Check if user is entering custom withdrawal amount
+      const awaitingUserId = awaitingWithdrawalAmount.get(telegramId);
+      if (awaitingUserId && text && !text.startsWith('/') && !text.match(/^(EQ|UQ)[A-Za-z0-9_-]{46}$/) && !text.match(/^[a-fA-F0-9]{64}$/)) {
+        await this.handleCustomWithdrawalAmount(chatId, telegramId, awaitingUserId, text);
+        return;
       }
     });
 
@@ -245,7 +256,7 @@ Send USDT (TRC-20) to our escrow wallet:
 
 ⚠️ Important:
 • Only send USDT on TON Network
-• Minimum amount: 1 USDT
+• Minimum amount: 0.020 USDT
 • 1% fee will be charged
 
 After sending, paste your transaction hash to verify the payment.
@@ -1220,6 +1231,8 @@ Copy the template above and send it to our support team for faster assistance.
       let withdrawAmount = balance;
       
       if (type === 'custom') {
+        // Store the user ID for custom withdrawal amount input
+        awaitingWithdrawalAmount.set(telegramId, userId);
         this.bot.sendMessage(chatId, 'Please enter the amount you want to withdraw (minimum 0.020 USDT):');
         return;
       }
@@ -1583,6 +1596,83 @@ The slot has been returned to the campaign pool.
   }
 
   private awaitingProofSubmission = new Map<string, string>(); // telegramId -> submissionId
+
+  private async handleCustomWithdrawalAmount(chatId: number, telegramId: string, userId: string, text: string) {
+    try {
+      const amount = parseFloat(text);
+      
+      if (isNaN(amount) || amount <= 0) {
+        this.bot.sendMessage(chatId, '❌ Please enter a valid number greater than 0 (e.g., 0.025)');
+        return;
+      }
+
+      if (amount < 0.020) {
+        this.bot.sendMessage(chatId, '❌ Minimum withdrawal amount is 0.020 USDT. Please enter a higher amount.');
+        return;
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ User not found.');
+        awaitingWithdrawalAmount.delete(telegramId);
+        return;
+      }
+
+      const balance = parseFloat(user.balance);
+      if (amount > balance) {
+        this.bot.sendMessage(chatId, `❌ Insufficient balance. You have ${balance} USDT available.`);
+        return;
+      }
+
+      // Clear the awaiting state
+      awaitingWithdrawalAmount.delete(telegramId);
+
+      // Process the custom withdrawal
+      const fee = amount * 0.01;
+      const finalAmount = amount - fee;
+
+      // Create withdrawal record
+      const withdrawal = await storage.createWithdrawal({
+        userId: user.id,
+        amount: finalAmount.toString(),
+        fee: fee.toString(),
+        destinationWallet: user.walletAddress,
+        status: 'pending'
+      });
+
+      // Update user balance
+      const newBalance = balance - amount;
+      await storage.updateUserBalance(user.id, newBalance.toString());
+
+      // Process with TON service
+      const result = await tonService.processWithdrawal(user.walletAddress, finalAmount.toString());
+      
+      if (result.success) {
+        await storage.updateWithdrawalStatus(withdrawal.id, 'completed', result.hash);
+        
+        this.bot.sendMessage(chatId, `
+✅ Withdrawal Processed Successfully!
+
+💰 Amount: ${finalAmount.toFixed(8)} USDT
+💳 Fee: ${fee.toFixed(8)} USDT
+🏦 Sent to: ${user.walletAddress}
+🔗 Hash: ${result.hash}
+
+Funds will arrive in 5-15 minutes.
+        `);
+      } else {
+        await storage.updateWithdrawalStatus(withdrawal.id, 'failed');
+        await storage.updateUserBalance(user.id, user.balance); // Refund
+        
+        this.bot.sendMessage(chatId, '❌ Withdrawal failed. Please try again later. Your balance has been restored.');
+      }
+
+    } catch (error) {
+      console.error('Error processing custom withdrawal:', error);
+      this.bot.sendMessage(chatId, '❌ Error processing withdrawal. Please try again.');
+      awaitingWithdrawalAmount.delete(telegramId);
+    }
+  }
 
   public start() {
     console.log('TaskBot started successfully!');
