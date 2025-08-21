@@ -45,13 +45,22 @@ Your social media marketing automation platform on TON Network.
 Use /menu to see all available commands.
       `;
       
+      const telegramId = msg.from?.id.toString() || '';
+      const isAdminUser = this.isAdmin(telegramId);
+      
+      const keyboard: any[] = [
+        [{ text: '👤 Create Account' }, { text: '💰 Fund Account' }],
+        [{ text: '📋 Available Campaigns' }, { text: '🎯 My Campaigns' }],
+        [{ text: '💸 Withdraw Funds' }, { text: '🆘 Contact Support' }]
+      ];
+
+      if (isAdminUser) {
+        keyboard.push([{ text: '🔴 Admin Panel' }]);
+      }
+
       this.bot.sendMessage(chatId, welcomeMessage, {
         reply_markup: {
-          keyboard: [
-            [{ text: '👤 Create Account' }, { text: '💰 Fund Account' }],
-            [{ text: '📋 Available Campaigns' }, { text: '🎯 My Campaigns' }],
-            [{ text: '💸 Withdraw Funds' }, { text: '🆘 Contact Support' }]
-          ],
+          keyboard,
           resize_keyboard: true,
           one_time_keyboard: false
         }
@@ -60,7 +69,8 @@ Use /menu to see all available commands.
 
     // Menu command
     this.bot.onText(/\/menu/, (msg) => {
-      this.showMainMenu(msg.chat.id);
+      const telegramId = msg.from?.id.toString() || '';
+      this.showMainMenu(msg.chat.id, telegramId);
     });
 
     // Handle button clicks
@@ -91,6 +101,13 @@ Use /menu to see all available commands.
           break;
         case '🔧 Test Wallet':
           this.handleTestWallet(chatId, telegramId);
+          break;
+        case '🔴 Admin Panel':
+          if (this.isAdmin(telegramId)) {
+            this.showAdminPanel(chatId, telegramId);
+          } else {
+            this.bot.sendMessage(chatId, '❌ Access denied. Admin privileges required.');
+          }
           break;
       }
     });
@@ -137,9 +154,103 @@ Use /menu to see all available commands.
         await this.verifyTransaction(chatId, telegramId, hash);
       }
     });
+
+    // Admin commands
+    this.bot.onText(/\/setbalance (\d+) ([\d.]+)/, async (msg, match) => {
+      const chatId = msg.chat.id;
+      const telegramId = msg.from?.id.toString() || '';
+      
+      if (!this.isAdmin(telegramId)) {
+        this.bot.sendMessage(chatId, '❌ Access denied. Admin privileges required.');
+        return;
+      }
+
+      const targetTelegramId = match?.[1];
+      const amount = match?.[2];
+      
+      if (targetTelegramId && amount) {
+        await this.handleSetBalance(chatId, targetTelegramId, amount);
+      }
+    });
+
+    this.bot.onText(/\/addbalance (\d+) ([\d.]+)/, async (msg, match) => {
+      const chatId = msg.chat.id;
+      const telegramId = msg.from?.id.toString() || '';
+      
+      if (!this.isAdmin(telegramId)) {
+        this.bot.sendMessage(chatId, '❌ Access denied. Admin privileges required.');
+        return;
+      }
+
+      const targetTelegramId = match?.[1];
+      const amount = match?.[2];
+      
+      if (targetTelegramId && amount) {
+        await this.handleAddBalance(chatId, targetTelegramId, amount);
+      }
+    });
+
+    this.bot.onText(/\/deductbalance (\d+) ([\d.]+)/, async (msg, match) => {
+      const chatId = msg.chat.id;
+      const telegramId = msg.from?.id.toString() || '';
+      
+      if (!this.isAdmin(telegramId)) {
+        this.bot.sendMessage(chatId, '❌ Access denied. Admin privileges required.');
+        return;
+      }
+
+      const targetTelegramId = match?.[1];
+      const amount = match?.[2];
+      
+      if (targetTelegramId && amount) {
+        await this.handleDeductBalance(chatId, targetTelegramId, amount);
+      }
+    });
+
+    this.bot.onText(/\/userinfo (\d+)/, async (msg, match) => {
+      const chatId = msg.chat.id;
+      const telegramId = msg.from?.id.toString() || '';
+      
+      if (!this.isAdmin(telegramId)) {
+        this.bot.sendMessage(chatId, '❌ Access denied. Admin privileges required.');
+        return;
+      }
+
+      const targetTelegramId = match?.[1];
+      
+      if (targetTelegramId) {
+        await this.handleGetUserInfo(chatId, targetTelegramId);
+      }
+    });
   }
 
-  private showMainMenu(chatId: number) {
+  // Admin check helper
+  private isAdmin(telegramId: string): boolean {
+    return telegramId === "5154336054";
+  }
+
+  // Admin Panel
+  private showAdminPanel(chatId: number, telegramId: string) {
+    const adminMessage = `
+🔴 Admin Panel
+
+Balance Management Tools:
+
+Available Commands:
+• /setbalance [telegram_id] [amount] - Set user's balance
+• /addbalance [telegram_id] [amount] - Add to user's balance  
+• /deductbalance [telegram_id] [amount] - Deduct from user's balance
+• /userinfo [telegram_id] - Get user information
+
+Example: /setbalance 5154336054 50.00
+    `;
+
+    this.bot.sendMessage(chatId, adminMessage);
+  }
+
+  private showMainMenu(chatId: number, telegramId?: string) {
+    const isAdminUser = telegramId && this.isAdmin(telegramId);
+    
     const menuMessage = `
 📋 Main Menu
 
@@ -151,17 +262,23 @@ Choose an option:
 🎯 My Campaigns - Create and manage campaigns
 💸 Withdraw Funds - Withdraw your earnings
 🆘 Contact Support - Get help from our team
-🔧 Test Wallet - Check blockchain connectivity
+🔧 Test Wallet - Check blockchain connectivity${isAdminUser ? '\n🔴 Admin Panel - Balance Management' : ''}
     `;
+
+    const keyboard: any[] = [
+      [{ text: '👤 Create Account' }, { text: '💰 Fund Account' }],
+      [{ text: '📋 Available Campaigns' }, { text: '🎯 My Campaigns' }],
+      [{ text: '💸 Withdraw Funds' }, { text: '🆘 Contact Support' }],
+      [{ text: '🔧 Test Wallet' }]
+    ];
+
+    if (isAdminUser) {
+      keyboard.push([{ text: '🔴 Admin Panel' }]);
+    }
 
     this.bot.sendMessage(chatId, menuMessage, {
       reply_markup: {
-        keyboard: [
-          [{ text: '👤 Create Account' }, { text: '💰 Fund Account' }],
-          [{ text: '📋 Available Campaigns' }, { text: '🎯 My Campaigns' }],
-          [{ text: '💸 Withdraw Funds' }, { text: '🆘 Contact Support' }],
-          [{ text: '🔧 Test Wallet' }]
-        ],
+        keyboard,
         resize_keyboard: true
       }
     });
@@ -1814,6 +1931,124 @@ ${notes ? `\n📝 **Notes:** ${notes}` : ''}
         this.bot.sendMessage(msg.chat.id, '❌ Error submitting proof. Please try again.');
       }
     });
+  }
+
+  // Admin handler methods
+  private async handleSetBalance(chatId: number, targetTelegramId: string, amount: string) {
+    try {
+      const user = await storage.getUserByTelegramId(targetTelegramId);
+      if (!user) {
+        this.bot.sendMessage(chatId, `❌ User with Telegram ID ${targetTelegramId} not found.`);
+        return;
+      }
+
+      const response = await fetch(`http://localhost:5000/api/admin/users/${user.id}/balance/set`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '5154336054'
+        },
+        body: JSON.stringify({ amount })
+      });
+
+      if (response.ok) {
+        const updatedUser = await storage.getUserByTelegramId(targetTelegramId);
+        this.bot.sendMessage(chatId, `✅ Balance set successfully!\n\nUser: ${targetTelegramId}\nNew Balance: ${updatedUser?.balance || amount} USDT`);
+      } else {
+        const error = await response.text();
+        this.bot.sendMessage(chatId, `❌ Failed to set balance: ${error}`);
+      }
+    } catch (error) {
+      console.error('Error setting balance:', error);
+      this.bot.sendMessage(chatId, '❌ Error setting balance. Check console logs.');
+    }
+  }
+
+  private async handleAddBalance(chatId: number, targetTelegramId: string, amount: string) {
+    try {
+      const user = await storage.getUserByTelegramId(targetTelegramId);
+      if (!user) {
+        this.bot.sendMessage(chatId, `❌ User with Telegram ID ${targetTelegramId} not found.`);
+        return;
+      }
+
+      const response = await fetch(`http://localhost:5000/api/admin/users/${user.id}/balance/add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '5154336054'
+        },
+        body: JSON.stringify({ amount })
+      });
+
+      if (response.ok) {
+        const updatedUser = await storage.getUserByTelegramId(targetTelegramId);
+        this.bot.sendMessage(chatId, `✅ Balance added successfully!\n\nUser: ${targetTelegramId}\nNew Balance: ${updatedUser?.balance || 'N/A'} USDT\nAdded: +${amount} USDT`);
+      } else {
+        const error = await response.text();
+        this.bot.sendMessage(chatId, `❌ Failed to add balance: ${error}`);
+      }
+    } catch (error) {
+      console.error('Error adding balance:', error);
+      this.bot.sendMessage(chatId, '❌ Error adding balance. Check console logs.');
+    }
+  }
+
+  private async handleDeductBalance(chatId: number, targetTelegramId: string, amount: string) {
+    try {
+      const user = await storage.getUserByTelegramId(targetTelegramId);
+      if (!user) {
+        this.bot.sendMessage(chatId, `❌ User with Telegram ID ${targetTelegramId} not found.`);
+        return;
+      }
+
+      const response = await fetch(`http://localhost:5000/api/admin/users/${user.id}/balance/deduct`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '5154336054'
+        },
+        body: JSON.stringify({ amount })
+      });
+
+      if (response.ok) {
+        const updatedUser = await storage.getUserByTelegramId(targetTelegramId);
+        this.bot.sendMessage(chatId, `✅ Balance deducted successfully!\n\nUser: ${targetTelegramId}\nNew Balance: ${updatedUser?.balance || 'N/A'} USDT\nDeducted: -${amount} USDT`);
+      } else {
+        const error = await response.text();
+        this.bot.sendMessage(chatId, `❌ Failed to deduct balance: ${error}`);
+      }
+    } catch (error) {
+      console.error('Error deducting balance:', error);
+      this.bot.sendMessage(chatId, '❌ Error deducting balance. Check console logs.');
+    }
+  }
+
+  private async handleGetUserInfo(chatId: number, targetTelegramId: string) {
+    try {
+      const user = await storage.getUserByTelegramId(targetTelegramId);
+      if (!user) {
+        this.bot.sendMessage(chatId, `❌ User with Telegram ID ${targetTelegramId} not found.`);
+        return;
+      }
+
+      const userInfo = `
+👤 User Information
+
+🆔 Telegram ID: ${user.telegramId}
+💼 Wallet: ${user.walletAddress}
+💰 Balance: ${user.balance} USDT
+🏆 Rewards: ${user.rewards} USDT
+📊 Completed Tasks: ${user.completedTasks}
+🔧 Admin: ${user.isAdmin ? 'Yes' : 'No'}
+📅 Created: ${new Date(user.createdAt).toLocaleDateString()}
+      `;
+
+      this.bot.sendMessage(chatId, userInfo);
+    } catch (error) {
+      console.error('Error getting user info:', error);
+      this.bot.sendMessage(chatId, '❌ Error getting user info. Check console logs.');
+    }
   }
 }
 
