@@ -621,7 +621,20 @@ This will show their account balance, transaction history, and verification stat
       // Get user transactions
       const transactions = await storage.getUserTransactions(user.id);
       const deposits = transactions.filter(t => t.type === 'deposit');
+      const withdrawals = transactions.filter(t => t.type === 'withdrawal');
+      const campaignFunding = transactions.filter(t => t.type === 'campaign_funding');
+      const rewards = transactions.filter(t => t.type === 'reward');
+      
       const totalDeposited = deposits.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+      const totalWithdrawn = withdrawals.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+      const totalCampaignFunding = campaignFunding.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+      const totalRewards = rewards.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+      
+      // Calculate actual balance from transactions
+      const calculatedBalance = totalDeposited + totalRewards - totalWithdrawn - totalCampaignFunding;
+      const storedBalance = parseFloat(user.balance);
+      const balanceDiscrepancy = Math.abs(calculatedBalance - storedBalance) > 0.00000001;
+      
       const depositCount = deposits.length;
 
       // Get user campaigns and submissions
@@ -638,9 +651,16 @@ This will show their account balance, transaction history, and verification stat
 • Registration: ${new Date(user.createdAt).toLocaleString()}
 
 💰 Account Balance:
-• Current Balance: ${user.balance} USDT
+• Stored Balance: ${user.balance} USDT
+• Calculated Balance: ${calculatedBalance.toFixed(8)} USDT ${balanceDiscrepancy ? '⚠️ MISMATCH!' : '✅'}
 • Total Rewards: ${user.rewards} USDT
 • Tasks Completed: ${user.completedTasks}
+
+📊 Balance Breakdown:
+• Deposits: +${totalDeposited.toFixed(8)} USDT
+• Rewards: +${totalRewards.toFixed(8)} USDT
+• Withdrawals: -${totalWithdrawn.toFixed(8)} USDT
+• Campaign Funding: -${totalCampaignFunding.toFixed(8)} USDT
 
 💳 Deposit History:
 • Total Deposited: ${totalDeposited.toFixed(8)} USDT
@@ -661,6 +681,7 @@ ${transactions.slice(0, 5).map((t, i) =>
         disable_web_page_preview: true,
         reply_markup: {
           inline_keyboard: [
+            ...(balanceDiscrepancy ? [[{ text: '🔧 Fix Balance', callback_data: `fix_balance_${targetTelegramId}_${calculatedBalance.toFixed(8)}` }]] : []),
             [{ text: '🔍 Lookup Another User', callback_data: 'admin_user_lookup' }],
             [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
           ]
@@ -669,6 +690,44 @@ ${transactions.slice(0, 5).map((t, i) =>
     } catch (error) {
       console.error('Error loading user account info:', error);
       this.bot.sendMessage(chatId, '❌ Error loading user information. Please try again.');
+    }
+  }
+
+  private async handleBalanceFix(chatId: number, adminTelegramId: string, targetTelegramId: string, correctBalance: string) {
+    try {
+      const user = await storage.getUserByTelegramId(targetTelegramId);
+      if (!user) {
+        this.bot.sendMessage(chatId, `❌ User with Telegram ID ${targetTelegramId} not found.`);
+        return;
+      }
+
+      const oldBalance = user.balance;
+      await storage.updateUserBalance(user.id, correctBalance);
+
+      const confirmMessage = `
+🔧 Balance Corrected Successfully!
+
+👤 User: ${targetTelegramId}
+🔄 Balance Updated:
+• Old Balance: ${oldBalance} USDT
+• New Balance: ${correctBalance} USDT
+
+✅ Balance has been corrected based on transaction history.
+      `;
+
+      this.bot.sendMessage(chatId, confirmMessage, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔍 View Updated Account', callback_data: 'admin_user_lookup' }],
+            [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
+          ]
+        }
+      });
+
+      console.log(`[ADMIN] Balance corrected for user ${targetTelegramId}: ${oldBalance} -> ${correctBalance} by admin ${adminTelegramId}`);
+    } catch (error) {
+      console.error('Error fixing balance:', error);
+      this.bot.sendMessage(chatId, '❌ Error correcting balance. Please try again.');
     }
   }
 
@@ -2125,6 +2184,18 @@ Please check:
       if (data === 'admin_user_lookup') {
         if (this.isAdmin(telegramId)) {
           await this.showUserLookupPrompt(msg.chat.id, telegramId);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      // Handle balance fix
+      if (data.startsWith('fix_balance_')) {
+        if (this.isAdmin(telegramId)) {
+          const parts = data.split('_');
+          const targetTelegramId = parts[2];
+          const correctBalance = parts[3];
+          await this.handleBalanceFix(msg.chat.id, telegramId, targetTelegramId, correctBalance);
         } else {
           this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
         }
