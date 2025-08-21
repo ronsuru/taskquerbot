@@ -439,6 +439,11 @@ export class DatabaseStorage implements IStorage {
     return setting ? parseFloat(setting.settingValue) : 0.01; // 1%
   }
 
+  async getDepositFeeRate(): Promise<number> {
+    const setting = await this.getSystemSetting("deposit_fee_rate");
+    return setting ? parseFloat(setting.settingValue) : 0.01; // 1%
+  }
+
   // Initialize default settings
   async initializeDefaultSettings(): Promise<void> {
     const defaultSettings = [

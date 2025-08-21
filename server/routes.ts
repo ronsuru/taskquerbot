@@ -192,7 +192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Calculate costs
       const baseAmount = parseFloat(campaignData.rewardAmount) * campaignData.totalSlots;
-      const costs = tonService.calculateTotalCost(baseAmount.toString());
+      const costs = await tonService.calculateTotalCost(baseAmount.toString());
 
       const campaign = await storage.createCampaign({
         ...campaignData,
@@ -251,7 +251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId,
         type: "deposit",
         amount: verification.amount || "0",
-        fee: tonService.calculateFee(verification.amount || "0"),
+        fee: await tonService.calculateFee(verification.amount || "0"),
         status: "completed",
         hash,
         campaignId: campaign.id,

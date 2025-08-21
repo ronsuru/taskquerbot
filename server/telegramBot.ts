@@ -510,12 +510,16 @@ Choose an action:
       const campaignFeeRate = settingsMap['campaign_fee_rate'] || '0.01';
       const campaignFeePercent = (parseFloat(campaignFeeRate) * 100).toFixed(2);
       
+      const depositFeeRate = settingsMap['deposit_fee_rate'] || '0.01';
+      const depositFeePercent = (parseFloat(depositFeeRate) * 100).toFixed(2);
+      
       const settingsMessage = `
 ⚙️ System Settings
 
 Current Configuration:
 • Min Withdrawal: ${settingsMap['min_withdrawal_amount'] || '0.020'} USDT
 • Withdrawal Fee: ${withdrawalFeePercent}% of withdrawal amount
+• Deposit Fee: ${depositFeePercent}% of deposit amount
 • Campaign Fee: ${campaignFeePercent}% of campaign total
 • Min Slots: ${settingsMap['min_slots'] || '5'} slots
 • Min Reward: ${settingsMap['min_reward_amount'] || '0.015'} USDT
@@ -529,6 +533,7 @@ Select a setting to modify:
           inline_keyboard: [
             [{ text: '💸 Min Withdrawal Amount', callback_data: 'admin_set_min_withdrawal' }],
             [{ text: '💳 Withdrawal Fee', callback_data: 'admin_set_withdrawal_fee' }],
+            [{ text: '💰 Deposit Fee', callback_data: 'admin_set_deposit_fee' }],
             [{ text: '🏦 Campaign Creation Fee', callback_data: 'admin_set_campaign_fee' }],
             [{ text: '📊 Min Campaign Slots', callback_data: 'admin_set_min_slots' }],
             [{ text: '💰 Min Reward Amount', callback_data: 'admin_set_min_reward' }],
@@ -593,6 +598,12 @@ System uptime: ${process.uptime().toFixed(0)} seconds
         name: 'Campaign Creation Fee Rate',
         unit: '% (as decimal, e.g. 0.01 for 1%)',
         description: 'Percentage fee charged for creating campaigns (e.g. 0.01 = 1%)'
+      },
+      'deposit_fee': {
+        key: 'deposit_fee_rate',
+        name: 'Deposit Fee Rate',
+        unit: '% (as decimal, e.g. 0.01 for 1%)',
+        description: 'Percentage fee charged for deposits/funding (e.g. 0.01 = 1%)'
       },
       'min_slots': {
         key: 'min_slots',
@@ -845,6 +856,10 @@ Your account is now active! You can start earning by completing tasks or create 
         return;
       }
 
+      // Get configurable deposit fee rate
+      const depositFeeRate = await storage.getDepositFeeRate();
+      const depositFeePercent = (depositFeeRate * 100).toFixed(2);
+      
       const fundingMessage = `
 💰 Fund Your Account
 
@@ -856,7 +871,7 @@ Send USDT on TON Network to our escrow wallet:
 ⚠️ Important:
 • Only send USDT on TON Network
 • Minimum amount: 0.020 USDT
-• 1% fee will be charged
+• ${depositFeePercent}% fee will be charged
 
 After sending, paste your transaction hash to verify the payment.
 
@@ -892,9 +907,10 @@ Example: a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890
         return;
       }
 
-      // Calculate fee and net amount
+      // Calculate fee and net amount using configurable deposit fee rate
       const amount = parseFloat(verification.amount || '0');
-      const fee = amount * 0.01;
+      const depositFeeRate = await storage.getDepositFeeRate();
+      const fee = amount * depositFeeRate;
       const netAmount = amount - fee;
 
       // Create transaction record
@@ -916,7 +932,7 @@ Example: a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890
 
 📊 Transaction Summary:
 💳 Amount Sent: ${amount} USDT
-💰 Fee (1%): ${fee.toFixed(8)} USDT
+💰 Fee (${(depositFeeRate * 100).toFixed(2)}%): ${fee.toFixed(8)} USDT
 ✅ Credited: ${netAmount.toFixed(8)} USDT
 
 💰 New Balance: ${newBalance} USDT

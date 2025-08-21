@@ -498,16 +498,20 @@ export class TonService {
   }
 
   // Calculate fee (1% of amount)
-  calculateFee(amount: string): string {
+  async calculateFee(amount: string): Promise<string> {
     const amountNum = parseFloat(amount);
-    const fee = amountNum * 0.01;
+    const { storage } = await import('./storage');
+    const depositFeeRate = await storage.getDepositFeeRate();
+    const fee = amountNum * depositFeeRate;
     return fee.toFixed(8);
   }
 
   // Calculate total cost including fee
-  calculateTotalCost(baseAmount: string): { subtotal: string; fee: string; total: string } {
+  async calculateTotalCost(baseAmount: string): Promise<{ subtotal: string; fee: string; total: string }> {
     const subtotal = parseFloat(baseAmount);
-    const fee = subtotal * 0.01;
+    const { storage } = await import('./storage');
+    const depositFeeRate = await storage.getDepositFeeRate();
+    const fee = subtotal * depositFeeRate;
     const total = subtotal + fee;
 
     return {
