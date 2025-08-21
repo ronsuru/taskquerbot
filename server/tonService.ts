@@ -1,7 +1,8 @@
-import { TonClient, WalletContractV4, internal, Address } from "@ton/ton";
+import { TonClient, WalletContractV4, internal, Address, Cell, beginCell } from "@ton/ton";
 import { mnemonicToPrivateKey } from "@ton/crypto";
 
 const ESCROW_WALLET = "EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv";
+const USDT_MASTER = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"; // Official USDT jetton master address on TON
 const TON_API_KEY = process.env.TON_API_KEY || process.env.TONAPI_KEY || "";
 const WALLET_MNEMONIC = process.env.MNEMONIC_WALLET_KEY || "";
 
@@ -233,16 +234,40 @@ export class TonService {
       const wallet = WalletContractV4.create({ workchain, publicKey: keyPair.publicKey });
       const contract = this.client.open(wallet);
 
-      // Convert amount to nanotons (TON has 9 decimals)
-      const amountNano = BigInt(Math.floor(amountNum * 1000000000));
+      // Convert amount to USDT jetton units (USDT has 6 decimals)
+      const usdtAmount = BigInt(Math.floor(amountNum * 1000000));
 
-      // For USDT transfers, we need to use jetton (token) transfer
-      // This is a simplified TON transfer - for USDT tokens, additional jetton contract interaction is needed
+      console.log(`[INFO] Converting ${amount} USDT to ${usdtAmount.toString()} jetton units`);
+
+      // Get the bot's USDT jetton wallet address
+      const botJettonWallet = await this.getJettonWalletAddress(wallet.address.toString(), USDT_MASTER);
+      if (!botJettonWallet) {
+        return {
+          success: false,
+          error: 'Could not determine bot USDT wallet address',
+        };
+      }
+
+      console.log(`[INFO] Bot USDT wallet: ${botJettonWallet}`);
+
+      // Create jetton transfer message
+      const jettonTransferBody = beginCell()
+        .storeUint(0xf8a7ea5, 32) // jetton transfer op code
+        .storeUint(0, 64) // query_id
+        .storeCoins(usdtAmount) // amount of jettons to transfer
+        .storeAddress(Address.parse(destinationAddress)) // destination address
+        .storeAddress(wallet.address) // response_destination (where to send excess TON)
+        .storeBit(false) // custom_payload is null
+        .storeCoins(1) // forward_ton_amount (1 nanoTON for notification)
+        .storeBit(false) // forward_payload is null
+        .endCell();
+
+      // Create the transfer message to the bot's USDT jetton wallet
       const transfer = internal({
-        to: destinationAddress,
-        value: amountNano,
-        body: "Withdrawal from TaskBot",
-        bounce: false,
+        to: botJettonWallet,
+        value: BigInt(50000000), // 0.05 TON for gas fees
+        body: jettonTransferBody,
+        bounce: true,
       });
 
       // Execute actual blockchain transaction
@@ -297,8 +322,8 @@ export class TonService {
         // Generate transaction identifier 
         const hash = `verified_${wallet.address.toString().slice(0, 8)}_${seqno + 1}_${Date.now()}`;
         
-        console.log(`[SUCCESS] ✅ Transaction processed!`);
-        console.log(`[SUCCESS] 🎉 ${amount} USDT sent to ${destinationAddress}`);
+        console.log(`[SUCCESS] ✅ USDT Transaction processed!`);
+        console.log(`[SUCCESS] 🎉 ${amount} USDT (jettons) sent to ${destinationAddress}`);
         console.log(`[INFO] Transaction identifier: ${hash}`);
         
         return {
@@ -388,6 +413,36 @@ export class TonService {
     };
   }
 
+  // Get jetton wallet address for a specific owner and jetton master
+  async getJettonWalletAddress(ownerAddress: string, jettonMasterAddress: string): Promise<string | null> {
+    try {
+      if (!TON_API_KEY) {
+        console.log('[JETTON] No TonAPI key, cannot get jetton wallet address');
+        return null;
+      }
+
+      const response = await fetch(
+        `https://tonapi.io/v2/accounts/${ownerAddress}/jettons/${jettonMasterAddress}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${TON_API_KEY}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.wallet_address?.address || null;
+      }
+
+      console.log(`[JETTON] Could not get jetton wallet address: ${response.status}`);
+      return null;
+    } catch (error) {
+      console.error('[JETTON] Error getting jetton wallet address:', error);
+      return null;
+    }
+  }
+
   // Get bot wallet balances (TON and USDT)
   async getBotWalletBalances(): Promise<{
     address?: string;
@@ -408,9 +463,6 @@ export class TonService {
       // Try to get USDT balance using TonAPI
       try {
         if (TON_API_KEY) {
-          // USDT jetton master address on TON blockchain
-          const USDT_MASTER = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs";
-          
           const response = await fetch(
             `https://tonapi.io/v2/accounts/${walletInfo.address}/jettons/${USDT_MASTER}`,
             {
