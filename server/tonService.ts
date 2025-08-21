@@ -9,10 +9,9 @@ export class TonService {
   private client: TonClient;
 
   constructor() {
-    // Use alternative endpoint to avoid rate limits
+    // Use reliable TON Center endpoint (no API key needed for basic requests)
     this.client = new TonClient({
-      endpoint: "https://ton.org/api/v2/jsonRPC",
-      // Use alternative endpoint for better reliability
+      endpoint: "https://toncenter.com/api/v2/jsonRPC",
     });
   }
 
