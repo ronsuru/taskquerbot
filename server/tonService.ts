@@ -49,7 +49,7 @@ export class TonService {
       }
 
       // Check if any message goes to escrow wallet
-      const escrowWalletRaw = "0:543482bb7e4afaa9b80c3eafb6956f1f178979e8872b3b0cc4a558c715fcd4637"; // Raw format
+      const escrowWalletRaw = "0:54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"; // Raw format
       
       const isToEscrow = data.out_msgs.some((msg: any) => {
         const destination = msg.destination?.address;
@@ -58,7 +58,7 @@ export class TonService {
         // Check both user-friendly and raw format
         return destination === ESCROW_WALLET || 
                destination === escrowWalletRaw ||
-               (destination && destination.includes("543482bb7e4afaa9b80c3eafb6956f1f178979e8872b3b0cc4a558c715fcd4637"));
+               (destination && destination.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"));
       });
 
       if (!isToEscrow) {
@@ -71,7 +71,7 @@ export class TonService {
         const destination = msg.destination?.address;
         return destination === ESCROW_WALLET || 
                destination === escrowWalletRaw ||
-               (destination && destination.includes("543482bb7e4afaa9b80c3eafb6956f1f178979e8872b3b0cc4a558c715fcd4637"));
+               (destination && destination.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"));
       });
 
       const amount = escrowMsg?.value;
