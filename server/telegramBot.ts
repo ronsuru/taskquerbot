@@ -624,14 +624,16 @@ This will show their account balance, transaction history, and verification stat
       const withdrawals = transactions.filter(t => t.type === 'withdrawal');
       const campaignFunding = transactions.filter(t => t.type === 'campaign_funding');
       const rewards = transactions.filter(t => t.type === 'reward');
+      const fees = transactions.filter(t => t.type === 'fee');
       
       const totalDeposited = deposits.reduce((sum, t) => sum + parseFloat(t.amount), 0);
       const totalWithdrawn = withdrawals.reduce((sum, t) => sum + parseFloat(t.amount), 0);
       const totalCampaignFunding = campaignFunding.reduce((sum, t) => sum + parseFloat(t.amount), 0);
       const totalRewards = rewards.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+      const totalFees = fees.reduce((sum, t) => sum + parseFloat(t.amount), 0);
       
-      // Calculate actual balance from transactions
-      const calculatedBalance = totalDeposited + totalRewards - totalWithdrawn - totalCampaignFunding;
+      // Calculate actual balance from transactions (deposits + rewards) - (withdrawals + campaign funding + fees)
+      const calculatedBalance = totalDeposited + totalRewards - totalWithdrawn - totalCampaignFunding - totalFees;
       const storedBalance = parseFloat(user.balance);
       const balanceDiscrepancy = Math.abs(calculatedBalance - storedBalance) > 0.00000001;
       
@@ -661,6 +663,11 @@ This will show their account balance, transaction history, and verification stat
 • Rewards: +${totalRewards.toFixed(8)} USDT
 • Withdrawals: -${totalWithdrawn.toFixed(8)} USDT
 • Campaign Funding: -${totalCampaignFunding.toFixed(8)} USDT
+• Fees: -${totalFees.toFixed(8)} USDT
+
+🔍 Transaction Count Summary:
+• Deposits: ${deposits.length} | Rewards: ${rewards.length}
+• Withdrawals: ${withdrawals.length} | Campaign Funding: ${campaignFunding.length} | Fees: ${fees.length}
 
 💳 Deposit History:
 • Total Deposited: ${totalDeposited.toFixed(8)} USDT
