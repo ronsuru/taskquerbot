@@ -513,9 +513,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Valid amount required" });
       }
 
+      // Get current balance before update
+      const userBefore = await storage.getUser(userId);
+      if (!userBefore) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
       const user = await storage.setUserBalance(userId, amount.toString());
       if (!user) {
         return res.status(404).json({ error: "User not found" });
+      }
+
+      // Send notification to user
+      try {
+        const { sendBalanceCorrectionNotification } = await import("./telegramBot");
+        const adminTelegramId = req.headers["x-user-id"] as string;
+        await sendBalanceCorrectionNotification(
+          user.telegramId,
+          userBefore.balance,
+          user.balance,
+          adminTelegramId,
+          "Set"
+        );
+      } catch (notificationError) {
+        console.error("Error sending balance correction notification:", notificationError);
       }
 
       res.json(user);
@@ -534,9 +555,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Valid positive amount required" });
       }
 
+      // Get current balance before update
+      const userBefore = await storage.getUser(userId);
+      if (!userBefore) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
       const user = await storage.addToUserBalance(userId, amount.toString());
       if (!user) {
         return res.status(404).json({ error: "User not found" });
+      }
+
+      // Send notification to user
+      try {
+        const { sendBalanceCorrectionNotification } = await import("./telegramBot");
+        const adminTelegramId = req.headers["x-user-id"] as string;
+        await sendBalanceCorrectionNotification(
+          user.telegramId,
+          userBefore.balance,
+          user.balance,
+          adminTelegramId,
+          "Added"
+        );
+      } catch (notificationError) {
+        console.error("Error sending balance correction notification:", notificationError);
       }
 
       res.json(user);
@@ -555,9 +597,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Valid positive amount required" });
       }
 
+      // Get current balance before update
+      const userBefore = await storage.getUser(userId);
+      if (!userBefore) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
       const user = await storage.deductFromUserBalance(userId, amount.toString());
       if (!user) {
         return res.status(404).json({ error: "User not found" });
+      }
+
+      // Send notification to user
+      try {
+        const { sendBalanceCorrectionNotification } = await import("./telegramBot");
+        const adminTelegramId = req.headers["x-user-id"] as string;
+        await sendBalanceCorrectionNotification(
+          user.telegramId,
+          userBefore.balance,
+          user.balance,
+          adminTelegramId,
+          "Deducted"
+        );
+      } catch (notificationError) {
+        console.error("Error sending balance correction notification:", notificationError);
       }
 
       res.json(user);

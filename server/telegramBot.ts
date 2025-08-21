@@ -29,7 +29,7 @@ const awaitingDepositLookup = new Map<string, boolean>(); // telegramId -> boole
 const awaitingWithdrawalLookup = new Map<string, boolean>(); // telegramId -> boolean
 
 export class TaskBot {
-  private bot: TelegramBot;
+  public bot: TelegramBot;
 
   constructor() {
     this.bot = new TelegramBot(BOT_TOKEN, { polling: true });
@@ -3444,6 +3444,53 @@ if (BOT_TOKEN) {
 } else {
   console.warn('TELEGRAM_BOT_TOKEN not provided. Bot will not start.');
 }
+
+// Export function to send balance correction notifications
+export const sendBalanceCorrectionNotification = async (userTelegramId: string, oldBalance: string, newBalance: string, adminTelegramId: string, correctionType: string) => {
+  try {
+    if (!taskBotInstance) {
+      console.error('TaskBot instance not available for sending notifications');
+      return;
+    }
+
+    const user = await storage.getUserByTelegramId(userTelegramId);
+    if (!user) {
+      console.error(`User not found for Telegram ID: ${userTelegramId}`);
+      return;
+    }
+
+    const changeAmount = (parseFloat(newBalance) - parseFloat(oldBalance)).toFixed(8);
+    const isIncrease = parseFloat(changeAmount) > 0;
+    const changeSymbol = isIncrease ? '+' : '';
+    const emoji = isIncrease ? '📈' : '📉';
+    
+    const message = `
+${emoji} **Balance Correction Notification**
+
+Your account balance has been ${correctionType.toLowerCase()} by an administrator.
+
+💰 **Balance Update:**
+• Previous Balance: ${oldBalance} USDT
+• New Balance: ${newBalance} USDT
+• Change: ${changeSymbol}${changeAmount} USDT
+
+📋 **Details:**
+• Correction Type: ${correctionType}
+• Processed By: Admin
+• Date: ${new Date().toLocaleDateString()}
+
+If you have any questions about this correction, please contact support.
+    `;
+
+    await taskBotInstance.bot.sendMessage(userTelegramId, message, {
+      parse_mode: 'Markdown'
+    });
+
+    console.log(`[ADMIN] Balance correction notification sent to user ${userTelegramId}: ${oldBalance} -> ${newBalance} by admin ${adminTelegramId}`);
+  } catch (error) {
+    console.error('Error sending balance correction notification:', error);
+  }
+};
 
 export default TaskBot;
 export { taskBotInstance };
