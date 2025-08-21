@@ -863,7 +863,10 @@ After sending, paste your transaction hash to verify the payment.
 Example: a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890
       `;
 
-      this.bot.sendMessage(chatId, fundingMessage, { parse_mode: 'Markdown' });
+      this.bot.sendMessage(chatId, fundingMessage, { 
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true 
+      });
     } catch (error) {
       console.error('Error in handleFundAccount:', error);
       this.bot.sendMessage(chatId, '❌ Error accessing account. Please try again.');
