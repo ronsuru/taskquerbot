@@ -22,6 +22,15 @@ export default function Dashboard() {
     enabled: !!userId,
   });
 
+  // Debug logging
+  useEffect(() => {
+    if (user) {
+      console.log("User data:", user);
+      console.log("User telegramId:", user.telegramId);
+      console.log("Is admin check:", user.telegramId === "5154336054");
+    }
+  }, [user]);
+
   // Fetch campaigns
   const { data: campaigns = [] } = useQuery<Campaign[]>({
     queryKey: ["/api/campaigns", platformFilter],
