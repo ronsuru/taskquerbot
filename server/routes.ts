@@ -30,6 +30,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ uploadURL });
   });
 
+  // Test wallet endpoint
+  app.post("/api/test-wallet", async (req, res) => {
+    try {
+      const result = await tonService.testWallet();
+      res.json(result);
+    } catch (error) {
+      console.error("Error testing wallet:", error);
+      res.status(500).json({ error: "Failed to test wallet" });
+    }
+  });
+
   // User endpoints
   app.get("/api/users/:telegramId", async (req, res) => {
     try {
@@ -325,31 +336,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newBalance = (parseFloat(user.balance) - parseFloat(amount)).toString();
       await storage.updateUserBalance(userId, newBalance);
 
-      // Use TonKeeper service for automated withdrawal processing
-      try {
-        const { tonKeeperService } = await import("./tonKeeperService");
-        const result = await tonKeeperService.automatedTransfer(destinationWallet, finalAmount, userId);
-        
-        if (result.success) {
-          await storage.updateWithdrawalStatus(withdrawal.id, "completed", result.hash);
-        } else {
-          await storage.updateWithdrawalStatus(withdrawal.id, "failed");
-          // Refund balance on failure
-          await storage.updateUserBalance(userId, user.balance);
-        }
-      } catch (error) {
-        console.error("TonKeeper service error, falling back to original service:", error);
-        
-        // Fallback to original service
-        const result = await tonService.processWithdrawal(destinationWallet, finalAmount);
-        
-        if (result.success) {
-          await storage.updateWithdrawalStatus(withdrawal.id, "completed", result.hash);
-        } else {
-          await storage.updateWithdrawalStatus(withdrawal.id, "failed");
-          // Refund balance on failure
-          await storage.updateUserBalance(userId, user.balance);
-        }
+      // Use reliable TON service directly (has working seqno functions)
+      const result = await tonService.processWithdrawal(destinationWallet, finalAmount);
+      
+      if (result.success) {
+        await storage.updateWithdrawalStatus(withdrawal.id, "completed", result.hash);
+      } else {
+        await storage.updateWithdrawalStatus(withdrawal.id, "failed");
+        // Refund balance on failure
+        await storage.updateUserBalance(userId, user.balance);
       }
 
       res.status(201).json(withdrawal);
