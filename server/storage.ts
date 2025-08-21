@@ -16,7 +16,7 @@ import {
   type InsertWithdrawal
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -43,6 +43,9 @@ export interface IStorage {
   getUserSubmissions(userId: string): Promise<TaskSubmission[]>;
   updateSubmissionStatus(id: string, status: string): Promise<TaskSubmission>;
   getSubmission(id: string): Promise<TaskSubmission | undefined>;
+  getTaskSubmissionByCampaignAndUser(campaignId: string, userId: string): Promise<TaskSubmission | undefined>;
+  updateSubmissionProof(id: string, proofUrl: string, notes?: string): Promise<TaskSubmission>;
+  expireTaskSubmissions(): Promise<void>;
   
   // Withdrawals
   createWithdrawal(withdrawal: InsertWithdrawal): Promise<Withdrawal>;
@@ -172,6 +175,36 @@ export class DatabaseStorage implements IStorage {
   async getSubmission(id: string): Promise<TaskSubmission | undefined> {
     const [submission] = await db.select().from(taskSubmissions).where(eq(taskSubmissions.id, id));
     return submission || undefined;
+  }
+
+  async getTaskSubmissionByCampaignAndUser(campaignId: string, userId: string): Promise<TaskSubmission | undefined> {
+    const [submission] = await db.select().from(taskSubmissions)
+      .where(and(eq(taskSubmissions.campaignId, campaignId), eq(taskSubmissions.userId, userId)));
+    return submission || undefined;
+  }
+
+  async updateSubmissionProof(id: string, proofUrl: string, notes?: string): Promise<TaskSubmission> {
+    const [submission] = await db
+      .update(taskSubmissions)
+      .set({ 
+        proofUrl,
+        notes,
+        status: 'submitted',
+        submittedAt: new Date()
+      })
+      .where(eq(taskSubmissions.id, id))
+      .returning();
+    return submission;
+  }
+
+  async expireTaskSubmissions(): Promise<void> {
+    await db
+      .update(taskSubmissions)
+      .set({ status: 'expired' })
+      .where(and(
+        eq(taskSubmissions.status, 'claimed'),
+        sql`expires_at < now()`
+      ));
   }
 
   async createWithdrawal(insertWithdrawal: InsertWithdrawal): Promise<Withdrawal> {

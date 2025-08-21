@@ -1115,6 +1115,35 @@ Copy the template above and send it to our support team for faster assistance.
         await this.showCampaignsByPlatform(msg.chat.id, platform);
       }
 
+      if (data === 'back_to_platforms') {
+        await this.handleAvailableCampaigns(msg.chat.id, telegramId);
+      }
+
+      if (data.startsWith('join_campaign_')) {
+        const campaignId = data.replace('join_campaign_', '');
+        await this.handleJoinCampaign(msg.chat.id, telegramId, campaignId);
+      }
+
+      if (data.startsWith('claim_task_')) {
+        const campaignId = data.replace('claim_task_', '');
+        await this.handleClaimTask(msg.chat.id, telegramId, campaignId);
+      }
+
+      if (data.startsWith('submit_proof_')) {
+        const submissionId = data.replace('submit_proof_', '');
+        await this.handleSubmitProofPrompt(msg.chat.id, telegramId, submissionId);
+      }
+
+      if (data.startsWith('approve_submission_')) {
+        const submissionId = data.replace('approve_submission_', '');
+        await this.handleApproveSubmission(msg.chat.id, telegramId, submissionId);
+      }
+
+      if (data.startsWith('reject_submission_')) {
+        const submissionId = data.replace('reject_submission_', '');
+        await this.handleRejectSubmission(msg.chat.id, telegramId, submissionId);
+      }
+
       if (data.startsWith('withdraw_')) {
         const parts = data.split('_');
         const type = parts[1]; // 'all' or 'custom'
@@ -1136,16 +1165,41 @@ Copy the template above and send it to our support team for faster assistance.
       }
 
       let message = `📋 Available ${platform.toUpperCase()} Campaigns:\n\n`;
+      let buttons: any[] = [];
       
-      campaigns.slice(0, 5).forEach((campaign, index) => {
+      campaigns.slice(0, 10).forEach((campaign, index) => {
         const progress = ((campaign.totalSlots - campaign.availableSlots) / campaign.totalSlots) * 100;
-        message += `${index + 1}. ${campaign.title}\n`;
-        message += `💰 Reward: ${campaign.rewardAmount} USDT\n`;
+        message += `${index + 1}. **${campaign.title}**\n`;
+        message += `📝 ${campaign.description || 'No description'}\n`;
+        message += `💰 Reward: ${campaign.rewardAmount} USDT per task\n`;
         message += `📊 Slots: ${campaign.availableSlots}/${campaign.totalSlots} available\n`;
-        message += `📈 Progress: ${progress.toFixed(1)}%\n\n`;
+        message += `📈 Progress: ${progress.toFixed(1)}%\n`;
+        message += `🔗 URL: ${campaign.taskUrl || 'No URL provided'}\n\n`;
+        
+        // Add participation button for each campaign
+        if (campaign.availableSlots > 0) {
+          buttons.push([{ 
+            text: `🎯 Join Campaign: ${campaign.title.substring(0, 20)}${campaign.title.length > 20 ? '...' : ''}`, 
+            callback_data: `join_campaign_${campaign.id}` 
+          }]);
+        }
       });
 
-      this.bot.sendMessage(chatId, message);
+      if (campaigns.length > 10) {
+        message += `... and ${campaigns.length - 10} more campaigns\n\n`;
+      }
+
+      this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: buttons.length > 0 ? [
+            ...buttons,
+            [{ text: '🔙 Back to Platforms', callback_data: 'back_to_platforms' }]
+          ] : [
+            [{ text: '🔙 Back to Platforms', callback_data: 'back_to_platforms' }]
+          ]
+        }
+      });
       
     } catch (error) {
       console.error('Error showing campaigns by platform:', error);
@@ -1214,9 +1268,423 @@ Funds will arrive in 5-15 minutes.
     }
   }
 
+  private async handleJoinCampaign(chatId: number, telegramId: string, campaignId: string) {
+    try {
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        this.bot.sendMessage(chatId, '❌ Campaign not found.');
+        return;
+      }
+
+      const user = await storage.getUserByTelegramId(telegramId);
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ Please register first using /start');
+        return;
+      }
+
+      // Check if user already has an active submission for this campaign
+      const existingSubmission = await storage.getTaskSubmissionByCampaignAndUser(campaignId, user.id);
+      if (existingSubmission) {
+        let statusMessage = '';
+        switch (existingSubmission.status) {
+          case 'claimed':
+            const timeLeft = Math.max(0, Math.floor((new Date(existingSubmission.expiresAt!).getTime() - Date.now()) / (1000 * 60 * 60)));
+            statusMessage = `⏳ You already claimed this task! You have ${timeLeft} hours left to submit proof.`;
+            break;
+          case 'submitted':
+            statusMessage = '📋 You already submitted proof for this task. Waiting for approval.';
+            break;
+          case 'approved':
+            statusMessage = '✅ You already completed this task and received your reward!';
+            break;
+          case 'rejected':
+            statusMessage = '❌ Your submission was rejected. You cannot participate again.';
+            break;
+          case 'expired':
+            statusMessage = '⏰ Your previous claim expired. You can claim again if slots are available.';
+            break;
+        }
+        
+        if (existingSubmission.status !== 'expired') {
+          this.bot.sendMessage(chatId, statusMessage);
+          if (existingSubmission.status === 'claimed') {
+            this.bot.sendMessage(chatId, '📤 Ready to submit proof?', {
+              reply_markup: {
+                inline_keyboard: [[
+                  { text: '📤 Submit Proof', callback_data: `submit_proof_${existingSubmission.id}` }
+                ]]
+              }
+            });
+          }
+          return;
+        }
+      }
+
+      // Show campaign details with claim button
+      let message = `🎯 **${campaign.title}**\n\n`;
+      message += `📝 ${campaign.description || 'No description'}\n`;
+      message += `🔗 **Task URL:** ${campaign.taskUrl}\n`;
+      message += `💰 **Reward:** ${campaign.rewardAmount} USDT\n`;
+      message += `📊 **Slots Available:** ${campaign.availableSlots}/${campaign.totalSlots}\n`;
+      message += `🌐 **Platform:** ${campaign.platform.toUpperCase()}\n\n`;
+      message += `**Instructions:**\n`;
+      message += `1. Click "Claim Task" to reserve your slot (24-hour timer starts)\n`;
+      message += `2. Complete the task at the provided URL\n`;
+      message += `3. Submit proof (screenshot/link) before timer expires\n`;
+      message += `4. Wait for campaign creator approval\n`;
+      message += `5. Receive USDT reward upon approval\n`;
+
+      const buttons = [];
+      if (campaign.availableSlots > 0) {
+        buttons.push([{ text: '🎯 Claim Task (24h Timer)', callback_data: `claim_task_${campaignId}` }]);
+      } else {
+        message += `\n❌ **No slots available**`;
+      }
+      buttons.push([{ text: '🔙 Back to Campaigns', callback_data: `platform_${campaign.platform}` }]);
+
+      this.bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: buttons }
+      });
+
+    } catch (error) {
+      console.error('Error handling join campaign:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading campaign. Please try again.');
+    }
+  }
+
+  private async handleClaimTask(chatId: number, telegramId: string, campaignId: string) {
+    try {
+      const user = await storage.getUserByTelegramId(telegramId);
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ Please register first using /start');
+        return;
+      }
+
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        this.bot.sendMessage(chatId, '❌ Campaign not found.');
+        return;
+      }
+
+      if (campaign.availableSlots <= 0) {
+        this.bot.sendMessage(chatId, '❌ No slots available for this campaign.');
+        return;
+      }
+
+      // Check for existing active submission
+      const existingSubmission = await storage.getTaskSubmissionByCampaignAndUser(campaignId, user.id);
+      if (existingSubmission && existingSubmission.status !== 'expired') {
+        this.bot.sendMessage(chatId, '❌ You already have an active submission for this campaign.');
+        return;
+      }
+
+      // Create task submission with claimed status
+      const submission = await storage.createTaskSubmission({
+        campaignId,
+        userId: user.id,
+        status: 'claimed'
+      });
+
+      // Update available slots
+      await storage.updateCampaignSlots(campaignId, campaign.availableSlots - 1);
+
+      // Calculate expiry time
+      const expiryTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const expiryTimeStr = expiryTime.toLocaleString();
+
+      this.bot.sendMessage(chatId, `
+🎉 **Task Claimed Successfully!**
+
+⏰ **Timer Started:** 24 hours to complete
+⏳ **Expires:** ${expiryTimeStr}
+🎯 **Campaign:** ${campaign.title}
+🔗 **Task URL:** ${campaign.taskUrl}
+
+**Next Steps:**
+1. Complete the task at the provided URL
+2. Take a screenshot or get proof link
+3. Submit your proof before the timer expires
+
+**Important:** If you don't submit proof within 24 hours, your slot will be given to another participant!
+      `, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '📤 Submit Proof Now', callback_data: `submit_proof_${submission.id}` }
+          ]]
+        }
+      });
+
+    } catch (error) {
+      console.error('Error claiming task:', error);
+      this.bot.sendMessage(chatId, '❌ Error claiming task. Please try again.');
+    }
+  }
+
+  private async handleSubmitProofPrompt(chatId: number, telegramId: string, submissionId: string) {
+    try {
+      const submission = await storage.getSubmission(submissionId);
+      if (!submission) {
+        this.bot.sendMessage(chatId, '❌ Submission not found.');
+        return;
+      }
+
+      const user = await storage.getUserByTelegramId(telegramId);
+      if (!user || submission.userId !== user.id) {
+        this.bot.sendMessage(chatId, '❌ Unauthorized access.');
+        return;
+      }
+
+      if (submission.status !== 'claimed') {
+        this.bot.sendMessage(chatId, '❌ This task is not in claimable state.');
+        return;
+      }
+
+      // Check if expired
+      if (new Date() > new Date(submission.expiresAt!)) {
+        await storage.updateSubmissionStatus(submissionId, 'expired');
+        this.bot.sendMessage(chatId, '⏰ This task has expired. The slot has been returned to the pool.');
+        return;
+      }
+
+      // Store the submission ID for proof upload
+      this.awaitingProofSubmission.set(telegramId, submissionId);
+
+      this.bot.sendMessage(chatId, `
+📤 **Submit Your Proof**
+
+Please send one of the following:
+• 📸 **Screenshot** - Upload an image showing task completion
+• 🔗 **Link** - Send a URL as proof (e.g., tweet link, post link)
+• 📝 **Text** - Describe what you did with any relevant details
+
+**Example submissions:**
+• Screenshot of liked/shared post
+• Link to your comment/repost
+• Description of task completed
+
+Send your proof now:
+      `);
+
+    } catch (error) {
+      console.error('Error handling submit proof prompt:', error);
+      this.bot.sendMessage(chatId, '❌ Error processing request. Please try again.');
+    }
+  }
+
+  private async handleApproveSubmission(chatId: number, telegramId: string, submissionId: string) {
+    try {
+      const submission = await storage.getSubmission(submissionId);
+      if (!submission) {
+        this.bot.sendMessage(chatId, '❌ Submission not found.');
+        return;
+      }
+
+      const campaign = await storage.getCampaign(submission.campaignId);
+      if (!campaign) {
+        this.bot.sendMessage(chatId, '❌ Campaign not found.');
+        return;
+      }
+
+      const creator = await storage.getUserByTelegramId(telegramId);
+      if (!creator || campaign.creatorId !== creator.id) {
+        this.bot.sendMessage(chatId, '❌ Only campaign creators can approve submissions.');
+        return;
+      }
+
+      if (submission.status !== 'submitted') {
+        this.bot.sendMessage(chatId, '❌ This submission cannot be approved.');
+        return;
+      }
+
+      // Approve the submission
+      await storage.updateSubmissionStatus(submissionId, 'approved');
+
+      // Get the participant user
+      const participant = await storage.getUser(submission.userId);
+      if (participant) {
+        // Add reward to participant balance
+        const newBalance = parseFloat(participant.balance) + parseFloat(campaign.rewardAmount);
+        await storage.updateUserBalance(participant.id, newBalance.toString());
+
+        // Create reward transaction
+        await storage.createTransaction({
+          userId: participant.id,
+          type: 'reward',
+          amount: campaign.rewardAmount,
+          status: 'completed',
+          campaignId: campaign.id
+        });
+
+        // Notify participant
+        if (participant.telegramId) {
+          this.bot.sendMessage(parseInt(participant.telegramId), `
+🎉 **Submission Approved!**
+
+✅ Your submission for "${campaign.title}" has been approved!
+💰 **Reward:** ${campaign.rewardAmount} USDT added to your balance
+📊 **New Balance:** ${newBalance.toFixed(8)} USDT
+
+Great work! 🚀
+          `);
+        }
+      }
+
+      this.bot.sendMessage(chatId, `
+✅ **Submission Approved**
+
+The participant will receive ${campaign.rewardAmount} USDT as reward.
+      `);
+
+    } catch (error) {
+      console.error('Error approving submission:', error);
+      this.bot.sendMessage(chatId, '❌ Error approving submission. Please try again.');
+    }
+  }
+
+  private async handleRejectSubmission(chatId: number, telegramId: string, submissionId: string) {
+    try {
+      const submission = await storage.getSubmission(submissionId);
+      if (!submission) {
+        this.bot.sendMessage(chatId, '❌ Submission not found.');
+        return;
+      }
+
+      const campaign = await storage.getCampaign(submission.campaignId);
+      if (!campaign) {
+        this.bot.sendMessage(chatId, '❌ Campaign not found.');
+        return;
+      }
+
+      const creator = await storage.getUserByTelegramId(telegramId);
+      if (!creator || campaign.creatorId !== creator.id) {
+        this.bot.sendMessage(chatId, '❌ Only campaign creators can reject submissions.');
+        return;
+      }
+
+      if (submission.status !== 'submitted') {
+        this.bot.sendMessage(chatId, '❌ This submission cannot be rejected.');
+        return;
+      }
+
+      // Reject the submission
+      await storage.updateSubmissionStatus(submissionId, 'rejected');
+
+      // Return slot to the campaign
+      await storage.updateCampaignSlots(campaign.id, campaign.availableSlots + 1);
+
+      // Get the participant user
+      const participant = await storage.getUser(submission.userId);
+      if (participant && participant.telegramId) {
+        // Notify participant
+        this.bot.sendMessage(parseInt(participant.telegramId), `
+❌ **Submission Rejected**
+
+Your submission for "${campaign.title}" has been rejected.
+
+**Reason:** Invalid proof, duplicate content, or didn't follow instructions.
+
+You can try participating in other campaigns. Make sure to follow all requirements carefully.
+        `);
+      }
+
+      this.bot.sendMessage(chatId, `
+❌ **Submission Rejected**
+
+The slot has been returned to the campaign pool.
+      `);
+
+    } catch (error) {
+      console.error('Error rejecting submission:', error);
+      this.bot.sendMessage(chatId, '❌ Error rejecting submission. Please try again.');
+    }
+  }
+
+  private awaitingProofSubmission = new Map<string, string>(); // telegramId -> submissionId
+
   public start() {
     console.log('TaskBot started successfully!');
     this.setupCallbackHandlers();
+    this.setupProofSubmissionHandler();
+  }
+
+  private setupProofSubmissionHandler() {
+    // Handle proof submissions (text messages and photos)
+    this.bot.on('message', async (msg) => {
+      const telegramId = msg.from?.id.toString();
+      if (!telegramId || !this.awaitingProofSubmission.has(telegramId)) {
+        return;
+      }
+
+      const submissionId = this.awaitingProofSubmission.get(telegramId)!;
+      let proofUrl = '';
+      let notes = '';
+
+      try {
+        if (msg.photo) {
+          // Handle photo submission
+          const photo = msg.photo[msg.photo.length - 1]; // Get highest resolution
+          const fileLink = await this.bot.getFileLink(photo.file_id);
+          proofUrl = fileLink;
+          notes = msg.caption || '';
+        } else if (msg.text) {
+          // Handle text/link submission
+          proofUrl = msg.text;
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Please send a screenshot, link, or text as proof.');
+          return;
+        }
+
+        // Update submission with proof
+        const submission = await storage.updateSubmissionProof(submissionId, proofUrl, notes);
+        
+        // Clear the awaiting state
+        this.awaitingProofSubmission.delete(telegramId);
+
+        // Get campaign and creator info
+        const campaign = await storage.getCampaign(submission.campaignId);
+        if (campaign) {
+          const creator = await storage.getUser(campaign.creatorId);
+          
+          // Notify creator about new submission
+          if (creator && creator.telegramId) {
+            this.bot.sendMessage(parseInt(creator.telegramId), `
+📋 **New Submission for Review**
+
+🎯 **Campaign:** ${campaign.title}
+👤 **Participant:** User #${submission.userId.substring(0, 8)}...
+📤 **Proof:** ${proofUrl.length > 100 ? proofUrl.substring(0, 100) + '...' : proofUrl}
+${notes ? `📝 **Notes:** ${notes}` : ''}
+
+Please review and approve or reject:
+            `, {
+              reply_markup: {
+                inline_keyboard: [[
+                  { text: '✅ Approve', callback_data: `approve_submission_${submission.id}` },
+                  { text: '❌ Reject', callback_data: `reject_submission_${submission.id}` }
+                ]]
+              }
+            });
+          }
+        }
+
+        this.bot.sendMessage(msg.chat.id, `
+✅ **Proof Submitted Successfully!**
+
+Your submission has been sent to the campaign creator for review.
+You'll be notified once it's approved or rejected.
+
+📋 **What you submitted:**
+${proofUrl}
+${notes ? `\n📝 **Notes:** ${notes}` : ''}
+        `);
+
+      } catch (error) {
+        console.error('Error handling proof submission:', error);
+        this.bot.sendMessage(msg.chat.id, '❌ Error submitting proof. Please try again.');
+      }
+    });
   }
 }
 

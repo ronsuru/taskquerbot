@@ -49,9 +49,12 @@ export const taskSubmissions = pgTable("task_submissions", {
   proofUrl: text("proof_url"),
   proofLinks: jsonb("proof_links").$type<string[]>(),
   notes: text("notes"),
-  status: text("status").notNull().default("pending"), // pending, approved, rejected
-  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  status: text("status").notNull().default("claimed"), // claimed, submitted, approved, rejected, expired
+  claimedAt: timestamp("claimed_at").notNull().default(sql`now()`),
+  expiresAt: timestamp("expires_at").notNull().default(sql`now() + interval '24 hours'`),
+  submittedAt: timestamp("submitted_at"),
   reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
 export const withdrawals = pgTable("withdrawals", {
