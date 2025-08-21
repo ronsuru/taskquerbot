@@ -387,6 +387,64 @@ export class TonService {
       total: total.toFixed(8),
     };
   }
+
+  // Get bot wallet balances (TON and USDT)
+  async getBotWalletBalances(): Promise<{
+    address?: string;
+    tonBalance?: string;
+    usdtBalance?: string;
+    error?: string;
+  }> {
+    try {
+      // Get wallet info and TON balance
+      const walletInfo = await this.testWallet();
+      
+      if (!walletInfo.valid || !walletInfo.address) {
+        return { error: walletInfo.error || 'Wallet not configured' };
+      }
+
+      let usdtBalance = "0";
+      
+      // Try to get USDT balance using TonAPI
+      try {
+        if (TON_API_KEY) {
+          // USDT jetton master address on TON blockchain
+          const USDT_MASTER = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs";
+          
+          const response = await fetch(
+            `https://tonapi.io/v2/accounts/${walletInfo.address}/jettons/${USDT_MASTER}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${TON_API_KEY}`,
+              },
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            // Convert from jetton units to USDT (6 decimals for USDT)
+            const balance = data.balance;
+            if (balance) {
+              usdtBalance = (parseInt(balance) / 1000000).toFixed(6);
+            }
+          }
+        }
+      } catch (error) {
+        console.log("Could not fetch USDT balance:", error);
+        usdtBalance = "API Error";
+      }
+
+      return {
+        address: walletInfo.address,
+        tonBalance: walletInfo.balance || "0",
+        usdtBalance: usdtBalance,
+      };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
 }
 
 export const tonService = new TonService();

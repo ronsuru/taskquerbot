@@ -241,23 +241,62 @@ Use /menu to see all available commands.
   }
 
   // Admin Panel
-  private showAdminPanel(chatId: number, telegramId: string) {
-    const adminMessage = `
+  private async showAdminPanel(chatId: number, telegramId: string) {
+    try {
+      // Get bot wallet balances
+      const walletInfo = await tonService.getBotWalletBalances();
+      
+      let balanceInfo = '';
+      if (walletInfo.error) {
+        balanceInfo = `
+💳 Bot Wallet Status: ❌ ${walletInfo.error}
+`;
+      } else {
+        balanceInfo = `
+💳 Bot Wallet Balances:
+• Address: ${walletInfo.address?.slice(0, 10)}...${walletInfo.address?.slice(-8)}
+• TON Balance: ${walletInfo.tonBalance} TON
+• USDT Balance: ${walletInfo.usdtBalance} USDT
+`;
+      }
+
+      const adminMessage = `
+🔴 Admin Panel
+${balanceInfo}
+Choose an admin function:
+      `;
+
+      this.bot.sendMessage(chatId, adminMessage, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💰 Balance Management', callback_data: 'admin_balance_menu' }],
+            [{ text: '⚙️ Advanced Settings', callback_data: 'admin_settings_menu' }],
+            [{ text: '📊 System Information', callback_data: 'admin_system_info' }],
+            [{ text: '❌ Close Admin Panel', callback_data: 'close_admin_panel' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error loading bot wallet balances:', error);
+      const adminMessage = `
 🔴 Admin Panel
 
-Choose an admin function:
-    `;
+💳 Bot Wallet Status: ❌ Error loading balances
 
-    this.bot.sendMessage(chatId, adminMessage, {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '💰 Balance Management', callback_data: 'admin_balance_menu' }],
-          [{ text: '⚙️ Advanced Settings', callback_data: 'admin_settings_menu' }],
-          [{ text: '📊 System Information', callback_data: 'admin_system_info' }],
-          [{ text: '❌ Close Admin Panel', callback_data: 'close_admin_panel' }]
-        ]
-      }
-    });
+Choose an admin function:
+      `;
+
+      this.bot.sendMessage(chatId, adminMessage, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💰 Balance Management', callback_data: 'admin_balance_menu' }],
+            [{ text: '⚙️ Advanced Settings', callback_data: 'admin_settings_menu' }],
+            [{ text: '📊 System Information', callback_data: 'admin_system_info' }],
+            [{ text: '❌ Close Admin Panel', callback_data: 'close_admin_panel' }]
+          ]
+        }
+      });
+    }
   }
 
   private showAdminBalanceMenu(chatId: number, telegramId: string) {
@@ -432,7 +471,7 @@ Please enter the new value (numbers only):
       }
 
       // Update the setting
-      await storage.updateSystemSetting(settingKey, value);
+      await storage.setSystemSetting(settingKey, value, undefined, telegramId);
       
       // Clear the waiting state
       awaitingSettingChange.delete(telegramId);
@@ -1656,7 +1695,7 @@ Please check:
       // Admin panel callbacks
       if (data === 'admin_panel') {
         if (this.isAdmin(telegramId)) {
-          this.showAdminPanel(msg.chat.id, telegramId);
+          await this.showAdminPanel(msg.chat.id, telegramId);
         } else {
           this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
         }
