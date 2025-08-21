@@ -17,9 +17,10 @@ export const campaigns = pgTable("campaigns", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   creatorId: varchar("creator_id").notNull().references(() => users.id),
   title: text("title").notNull(),
-  description: text("description").notNull(),
+  description: text("description"),
   platform: text("platform").notNull(), // twitter, tiktok, facebook, telegram
   taskType: text("task_type").notNull(),
+  taskUrl: text("task_url"),
   totalSlots: integer("total_slots").notNull(),
   availableSlots: integer("available_slots").notNull(),
   rewardAmount: decimal("reward_amount", { precision: 18, scale: 8 }).notNull(),

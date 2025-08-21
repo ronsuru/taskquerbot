@@ -858,10 +858,13 @@ Please fund your account first using "💰 Fund Account"
         title: state.title!,
         description: state.description || '',
         platform: state.platform!,
-        rewardAmount: state.reward!.toString(),
+        taskType: 'engagement', // Default task type for social media campaigns
+        taskUrl: state.url!,
         totalSlots: state.slots!,
         availableSlots: state.slots!,
-        taskUrl: state.url!,
+        rewardAmount: state.reward!.toString(),
+        escrowAmount: totalCost.toString(),
+        fee: "0", // No additional fee for basic campaigns
         status: 'active'
       });
 
@@ -875,7 +878,7 @@ Please fund your account first using "💰 Fund Account"
         type: 'campaign_funding',
         amount: totalCost.toString(),
         status: 'completed',
-        description: `Campaign funding: ${state.title}`
+        campaignId: campaign.id
       });
 
       // Clear the creation state
