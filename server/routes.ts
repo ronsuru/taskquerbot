@@ -325,15 +325,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newBalance = (parseFloat(user.balance) - parseFloat(amount)).toString();
       await storage.updateUserBalance(userId, newBalance);
 
-      // Process withdrawal
-      const result = await tonService.processWithdrawal(destinationWallet, finalAmount);
-      
-      if (result.success) {
-        await storage.updateWithdrawalStatus(withdrawal.id, "completed", result.hash);
-      } else {
-        await storage.updateWithdrawalStatus(withdrawal.id, "failed");
-        // Refund balance on failure
-        await storage.updateUserBalance(userId, user.balance);
+      // Use TonKeeper service for automated withdrawal processing
+      try {
+        const { tonKeeperService } = await import("./tonKeeperService");
+        const result = await tonKeeperService.automatedTransfer(destinationWallet, finalAmount, userId);
+        
+        if (result.success) {
+          await storage.updateWithdrawalStatus(withdrawal.id, "completed", result.hash);
+        } else {
+          await storage.updateWithdrawalStatus(withdrawal.id, "failed");
+          // Refund balance on failure
+          await storage.updateUserBalance(userId, user.balance);
+        }
+      } catch (error) {
+        console.error("TonKeeper service error, falling back to original service:", error);
+        
+        // Fallback to original service
+        const result = await tonService.processWithdrawal(destinationWallet, finalAmount);
+        
+        if (result.success) {
+          await storage.updateWithdrawalStatus(withdrawal.id, "completed", result.hash);
+        } else {
+          await storage.updateWithdrawalStatus(withdrawal.id, "failed");
+          // Refund balance on failure
+          await storage.updateUserBalance(userId, user.balance);
+        }
       }
 
       res.status(201).json(withdrawal);
@@ -364,6 +380,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Internal server error" });
     }
   });
+
 
   // Admin middleware
   const requireAdmin = async (req: any, res: any, next: any) => {
@@ -487,6 +504,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(user);
     } catch (error) {
       console.error("Error making user admin:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // TonKeeper automated transfer endpoints
+  app.post("/api/tonkeeper/transfer", requireAdmin, async (req, res) => {
+    try {
+      const { destinationAddress, amount, userId } = req.body;
+      
+      if (!destinationAddress || !amount || !userId) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      const { tonKeeperService } = await import("./tonKeeperService");
+      const result = await tonKeeperService.automatedTransfer(destinationAddress, amount, userId);
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error processing automated transfer:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/tonkeeper/batch-transfer", requireAdmin, async (req, res) => {
+    try {
+      const { transfers } = req.body;
+      
+      if (!transfers || !Array.isArray(transfers)) {
+        return res.status(400).json({ error: "Invalid transfers array" });
+      }
+
+      const { tonKeeperService } = await import("./tonKeeperService");
+      const results = await tonKeeperService.batchTransfer(transfers);
+      
+      res.json({ results });
+    } catch (error) {
+      console.error("Error processing batch transfer:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/tonkeeper/process-pending", requireAdmin, async (req, res) => {
+    try {
+      const { tonKeeperService } = await import("./tonKeeperService");
+      const result = await tonKeeperService.processAllPendingWithdrawals();
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error processing pending withdrawals:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/tonkeeper/status", requireAdmin, async (req, res) => {
+    try {
+      const { tonKeeperService } = await import("./tonKeeperService");
+      const status = await tonKeeperService.healthCheck();
+      
+      res.json(status);
+    } catch (error) {
+      console.error("Error checking TonKeeper status:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });

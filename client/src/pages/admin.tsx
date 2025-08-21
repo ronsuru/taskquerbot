@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, Users, Wallet, TrendingUp, TrendingDown, DollarSign, Activity } from "lucide-react";
+import { Settings, Users, Wallet, TrendingUp, TrendingDown, DollarSign, Activity, Zap, Send, PlayCircle } from "lucide-react";
 
 const ADMIN_USER_ID = "79da10b5-36c3-40b5-a4e1-d4eec60ecd9b";
 
@@ -155,6 +155,49 @@ function AdminPage() {
     },
   });
 
+  // TonKeeper automation mutations
+  const processPendingMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/tonkeeper/process-pending", {
+        method: "POST",
+        headers: {
+          "X-User-ID": ADMIN_USER_ID,
+        },
+      });
+      if (!response.ok) throw new Error("Failed to process pending withdrawals");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/transactions"] });
+      toast({
+        title: "Automation Complete",
+        description: `Processed ${data.processed} withdrawals: ${data.successful} successful, ${data.failed} failed`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // TonKeeper status query
+  const { data: tonkeeperStatus, isLoading: statusLoading } = useQuery({
+    queryKey: ["/api/tonkeeper/status"],
+    queryFn: async () => {
+      const response = await fetch("/api/tonkeeper/status", {
+        headers: {
+          "X-User-ID": ADMIN_USER_ID,
+        },
+      });
+      if (!response.ok) throw new Error("Failed to fetch TonKeeper status");
+      return response.json();
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
   const handleBalanceUpdate = () => {
     if (!selectedUser || !amount) return;
     balanceMutation.mutate({ userId: selectedUser.id, operation, amount });
@@ -229,12 +272,88 @@ function AdminPage() {
         </Card>
       </div>
 
+      {/* TonKeeper Automation Panel */}
+      <Card className="mb-8">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Zap className="h-6 w-6 text-blue-600" />
+              <div>
+                <CardTitle>TonKeeper Automation</CardTitle>
+                <CardDescription>Automated fund transfers and wallet management</CardDescription>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {statusLoading ? (
+                <Badge variant="outline">Checking...</Badge>
+              ) : tonkeeperStatus?.healthy ? (
+                <Badge variant="default" className="bg-green-600">
+                  <div className="w-2 h-2 bg-white rounded-full mr-2"></div>
+                  Online
+                </Badge>
+              ) : (
+                <Badge variant="destructive">
+                  <div className="w-2 h-2 bg-white rounded-full mr-2"></div>
+                  Offline
+                </Badge>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="text-center p-4 bg-slate-50 rounded-lg">
+              <Wallet className="h-6 w-6 mx-auto mb-2 text-blue-600" />
+              <div className="text-sm font-medium text-slate-700">Wallet Balance</div>
+              <div className="text-lg font-bold">{tonkeeperStatus?.balance || "0.0000"} TON</div>
+            </div>
+            <div className="text-center p-4 bg-slate-50 rounded-lg">
+              <Send className="h-6 w-6 mx-auto mb-2 text-green-600" />
+              <div className="text-sm font-medium text-slate-700">Auto Transfers</div>
+              <div className="text-lg font-bold">{tonkeeperStatus?.walletReady ? "Ready" : "Offline"}</div>
+            </div>
+            <div className="text-center p-4 bg-slate-50 rounded-lg">
+              <PlayCircle className="h-6 w-6 mx-auto mb-2 text-purple-600" />
+              <div className="text-sm font-medium text-slate-700">Pending Queue</div>
+              <div className="text-lg font-bold">Auto-Process</div>
+            </div>
+          </div>
+          
+          <div className="flex gap-4">
+            <Button
+              onClick={() => processPendingMutation.mutate()}
+              disabled={processPendingMutation.isPending || !tonkeeperStatus?.healthy}
+              className="flex-1"
+            >
+              {processPendingMutation.isPending ? (
+                <>Processing...</>
+              ) : (
+                <>
+                  <PlayCircle className="h-4 w-4 mr-2" />
+                  Process All Pending Withdrawals
+                </>
+              )}
+            </Button>
+            
+            <Button
+              variant="outline"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/tonkeeper/status"] })}
+              disabled={statusLoading}
+            >
+              <Zap className="h-4 w-4 mr-2" />
+              Refresh Status
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Main Content Tabs */}
       <Tabs defaultValue="users" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="users">Users Management</TabsTrigger>
           <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
+          <TabsTrigger value="automation">Automation</TabsTrigger>
         </TabsList>
 
         {/* Users Tab */}
@@ -464,6 +583,145 @@ function AdminPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Automation Tab */}
+        <TabsContent value="automation">
+          <div className="grid gap-6">
+            {/* TonKeeper Service Status */}
+            <Card>
+              <CardHeader>
+                <CardTitle>TonKeeper Service Status</CardTitle>
+                <CardDescription>Real-time status of automated transfer system</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                    <div>
+                      <div className="font-medium">Service Health</div>
+                      <div className="text-sm text-muted-foreground">Overall system status</div>
+                    </div>
+                    <Badge variant={tonkeeperStatus?.healthy ? "default" : "destructive"}>
+                      {tonkeeperStatus?.healthy ? "Healthy" : "Unhealthy"}
+                    </Badge>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                    <div>
+                      <div className="font-medium">Wallet Connection</div>
+                      <div className="text-sm text-muted-foreground">TON wallet connectivity</div>
+                    </div>
+                    <Badge variant={tonkeeperStatus?.walletReady ? "default" : "outline"}>
+                      {tonkeeperStatus?.walletReady ? "Connected" : "Disconnected"}
+                    </Badge>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                    <div>
+                      <div className="font-medium">Available Balance</div>
+                      <div className="text-sm text-muted-foreground">Current wallet balance</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold">{tonkeeperStatus?.balance || "0.0000"} TON</div>
+                    </div>
+                  </div>
+                  
+                  {tonkeeperStatus?.error && (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="font-medium text-red-800">Error</div>
+                      <div className="text-sm text-red-600">{tonkeeperStatus.error}</div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Automation Controls */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Automation Controls</CardTitle>
+                <CardDescription>Manage automated withdrawal processing</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4">
+                  <Button
+                    onClick={() => processPendingMutation.mutate()}
+                    disabled={processPendingMutation.isPending || !tonkeeperStatus?.healthy}
+                    size="lg"
+                    className="w-full"
+                  >
+                    {processPendingMutation.isPending ? (
+                      <>
+                        <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                        Processing Withdrawals...
+                      </>
+                    ) : (
+                      <>
+                        <PlayCircle className="h-5 w-5 mr-2" />
+                        Process All Pending Withdrawals
+                      </>
+                    )}
+                  </Button>
+                  
+                  <div className="text-sm text-muted-foreground text-center">
+                    This will automatically process all pending withdrawal requests using the TonKeeper integration.
+                    Funds will be transferred from the bot wallet to user addresses.
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Integration Info */}
+            <Card>
+              <CardHeader>
+                <CardTitle>TonKeeper Integration Features</CardTitle>
+                <CardDescription>Enhanced automation capabilities</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                    <div>
+                      <div className="font-medium">Automated Fund Transfers</div>
+                      <div className="text-sm text-muted-foreground">
+                        Direct USDT transfers from bot wallet to user addresses
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-3">
+                    <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                    <div>
+                      <div className="font-medium">Batch Processing</div>
+                      <div className="text-sm text-muted-foreground">
+                        Process multiple withdrawals efficiently with rate limiting
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-3">
+                    <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                    <div>
+                      <div className="font-medium">Error Handling & Retry Logic</div>
+                      <div className="text-sm text-muted-foreground">
+                        Automatic retry on failures with exponential backoff
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-3">
+                    <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                    <div>
+                      <div className="font-medium">Real-time Status Monitoring</div>
+                      <div className="text-sm text-muted-foreground">
+                        Live monitoring of wallet status and transfer success rates
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

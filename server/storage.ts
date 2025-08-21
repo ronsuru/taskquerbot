@@ -310,6 +310,12 @@ export class DatabaseStorage implements IStorage {
         }))
       );
   }
+
+  async getPendingWithdrawals(): Promise<Withdrawal[]> {
+    return await db.select().from(withdrawals)
+      .where(eq(withdrawals.status, "pending"))
+      .orderBy(desc(withdrawals.createdAt));
+  }
 }
 
 export const storage = new DatabaseStorage();
