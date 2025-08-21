@@ -933,8 +933,8 @@ ${platformEmoji} **${state.title}**
 
       const balance = parseFloat(user.balance);
       
-      if (balance < 1) {
-        this.bot.sendMessage(chatId, '❌ Minimum withdrawal amount is 1 USDT. Complete more tasks to earn rewards!');
+      if (balance < 0.020) {
+        this.bot.sendMessage(chatId, '❌ Minimum withdrawal amount is 0.020 USDT. Complete more tasks to earn rewards!');
         return;
       }
 
@@ -944,7 +944,7 @@ ${platformEmoji} **${state.title}**
 💰 Available Balance: ${user.balance} USDT
 
 📋 Withdrawal Details:
-• Minimum amount: 1 USDT  
+• Minimum amount: 0.020 USDT  
 • Network fee: 1% of withdrawal amount
 • Processing time: 5-15 minutes
 • Funds sent to your registered wallet
@@ -1220,7 +1220,7 @@ Copy the template above and send it to our support team for faster assistance.
       let withdrawAmount = balance;
       
       if (type === 'custom') {
-        this.bot.sendMessage(chatId, 'Please enter the amount you want to withdraw (minimum 1 USDT):');
+        this.bot.sendMessage(chatId, 'Please enter the amount you want to withdraw (minimum 0.020 USDT):');
         return;
       }
 
@@ -1285,39 +1285,24 @@ Funds will arrive in 5-15 minutes.
       // Check if user already has an active submission for this campaign
       const existingSubmission = await storage.getTaskSubmissionByCampaignAndUser(campaignId, user.id);
       if (existingSubmission) {
-        let statusMessage = '';
-        switch (existingSubmission.status) {
-          case 'claimed':
-            const timeLeft = Math.max(0, Math.floor((new Date(existingSubmission.expiresAt!).getTime() - Date.now()) / (1000 * 60 * 60)));
-            statusMessage = `⏳ You already claimed this task! You have ${timeLeft} hours left to submit proof.`;
-            break;
-          case 'submitted':
-            statusMessage = '📋 You already submitted proof for this task. Waiting for approval.';
-            break;
-          case 'approved':
-            statusMessage = '✅ You already completed this task and received your reward!';
-            break;
-          case 'rejected':
-            statusMessage = '❌ Your submission was rejected. You cannot participate again.';
-            break;
-          case 'expired':
-            statusMessage = '⏰ Your previous claim expired. You can claim again if slots are available.';
-            break;
-        }
-        
-        if (existingSubmission.status !== 'expired') {
-          this.bot.sendMessage(chatId, statusMessage);
-          if (existingSubmission.status === 'claimed') {
-            this.bot.sendMessage(chatId, '📤 Ready to submit proof?', {
-              reply_markup: {
-                inline_keyboard: [[
-                  { text: '📤 Submit Proof', callback_data: `submit_proof_${existingSubmission.id}` }
-                ]]
-              }
-            });
-          }
+        // Only prevent if currently claimed or submitted (allow repeat participation for completed/rejected tasks)
+        if (existingSubmission.status === 'claimed') {
+          const timeLeft = Math.max(0, Math.floor((new Date(existingSubmission.expiresAt!).getTime() - Date.now()) / (1000 * 60 * 60)));
+          this.bot.sendMessage(chatId, `⏳ You already claimed this task! You have ${timeLeft} hours left to submit proof.`);
+          this.bot.sendMessage(chatId, '📤 Ready to submit proof?', {
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '📤 Submit Proof', callback_data: `submit_proof_${existingSubmission.id}` }
+              ]]
+            }
+          });
           return;
         }
+        if (existingSubmission.status === 'submitted') {
+          this.bot.sendMessage(chatId, '📋 You already submitted proof for this task. Waiting for approval.');
+          return;
+        }
+        // Allow participation again for approved, rejected, or expired tasks
       }
 
       // Show campaign details with claim button
@@ -1372,9 +1357,9 @@ Funds will arrive in 5-15 minutes.
         return;
       }
 
-      // Check for existing active submission
+      // Check for existing active submission (only prevent if claimed or submitted)
       const existingSubmission = await storage.getTaskSubmissionByCampaignAndUser(campaignId, user.id);
-      if (existingSubmission && existingSubmission.status !== 'expired') {
+      if (existingSubmission && (existingSubmission.status === 'claimed' || existingSubmission.status === 'submitted')) {
         this.bot.sendMessage(chatId, '❌ You already have an active submission for this campaign.');
         return;
       }
@@ -1454,17 +1439,13 @@ Funds will arrive in 5-15 minutes.
       this.bot.sendMessage(chatId, `
 📤 **Submit Your Proof**
 
-Please send one of the following:
-• 📸 **Screenshot** - Upload an image showing task completion
-• 🔗 **Link** - Send a URL as proof (e.g., tweet link, post link)
-• 📝 **Text** - Describe what you did with any relevant details
+Please send a **screenshot image** showing task completion:
+• 📸 **Screenshot** - Upload an image showing the completed task
+• ✅ **Examples**: Screenshot of liked post, followed account, shared content, etc.
 
-**Example submissions:**
-• Screenshot of liked/shared post
-• Link to your comment/repost
-• Description of task completed
+**Important:** Only image files are accepted as proof.
 
-Send your proof now:
+Send your screenshot now:
       `);
 
     } catch (error) {
@@ -1628,11 +1609,8 @@ The slot has been returned to the campaign pool.
           const fileLink = await this.bot.getFileLink(photo.file_id);
           proofUrl = fileLink;
           notes = msg.caption || '';
-        } else if (msg.text) {
-          // Handle text/link submission
-          proofUrl = msg.text;
         } else {
-          this.bot.sendMessage(msg.chat.id, '❌ Please send a screenshot, link, or text as proof.');
+          this.bot.sendMessage(msg.chat.id, '❌ Please send a screenshot image as proof. Text and links are not accepted.');
           return;
         }
 
