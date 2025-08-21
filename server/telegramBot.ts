@@ -755,12 +755,10 @@ Choose an option:
         const accountInfo = `
 ✅ Account Already Active
 
-👤 Telegram ID: \`${existingUser.telegramId}\`
+👤 Telegram ID: [${existingUser.telegramId}](tg://user?id=${existingUser.telegramId})
 💰 Balance: ${existingUser.balance} USDT
 🏆 Total Rewards: ${existingUser.rewards} USDT
 📊 Tasks Completed: ${existingUser.completedTasks}
-
-📋 *Tap Telegram ID to copy*
 
 Your account is ready to use!
         `;
@@ -802,13 +800,12 @@ EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv
         const accountInfo = `
 ✅ Account Already Exists!
 
-👤 Telegram ID: \`${existingUser.telegramId}\`
+👤 Telegram ID: [${existingUser.telegramId}](tg://user?id=${existingUser.telegramId})
 💰 Balance: ${existingUser.balance} USDT
 🏆 Total Rewards: ${existingUser.rewards} USDT
 📊 Tasks Completed: ${existingUser.completedTasks}
 💼 Wallet: ${existingUser.walletAddress}
 
-📋 *Tap Telegram ID to copy*
 Your account is already active and your Telegram ID remains permanent!
         `;
         
@@ -829,12 +826,11 @@ Your account is already active and your Telegram ID remains permanent!
       const successMessage = `
 ✅ Account Created Successfully!
 
-👤 Telegram ID: \`${user.telegramId}\`
+👤 Telegram ID: [${user.telegramId}](tg://user?id=${user.telegramId})
 💰 Balance: ${user.balance} USDT
 🏆 Rewards: ${user.rewards} USDT
 📊 Tasks Completed: ${user.completedTasks}
 
-📋 *Tap Telegram ID to copy*
 🔒 Your Telegram ID is PERMANENT and will never change!
 
 Your account is now active! You can start earning by completing tasks or create your own campaigns.
@@ -862,9 +858,7 @@ Your account is now active! You can start earning by completing tasks or create 
 Send USDT on TON Network to our escrow wallet:
 
 🏦 Escrow Wallet:
-\`EQBQLMDDw9022vZaXNXdWfh0om2sP_4AONerajNCnmcuLXJh\`
-
-📋 *Tap to copy address*
+[EQBQLMDDw9022vZaXNXdWfh0om2sP_4AONerajNCnmcuLXJh](https://tonviewer.com/EQBQLMDDw9022vZaXNXdWfh0om2sP_4AONerajNCnmcuLXJh)
 
 ⚠️ Important:
 • Only send USDT on TON Network
