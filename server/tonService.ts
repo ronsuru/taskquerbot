@@ -207,22 +207,67 @@ export class TonService {
         bounce: false,
       });
 
-      // For now, simulate the transaction due to API limitations
-      // In production with proper API access, implement actual blockchain transfers
-      console.log(`[SIMULATED] Would send ${amount} USDT to ${destinationAddress}`);
-      console.log(`[INFO] Wallet: ${wallet.address.toString()}`);
+      // Execute actual blockchain transaction
+      console.log(`[PROCESSING] Sending ${amount} USDT to ${destinationAddress}`);
+      console.log(`[INFO] From Wallet: ${wallet.address.toString()}`);
       console.log(`[INFO] Mnemonic loaded and validated successfully`);
       
-      // Generate a realistic transaction hash
-      const hash = `ton_${Date.now()}_${Math.random().toString(36).substr(2, 12)}`;
-      
-      // Simulate processing delay
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      return {
-        success: true,
-        hash: hash,
-      };
+      try {
+        // Send the actual transaction
+        const seqno = await contract.getSeqno();
+        console.log(`[INFO] Current sequence number: ${seqno}`);
+        
+        await contract.sendTransfer({
+          secretKey: keyPair.secretKey,
+          seqno: seqno,
+          messages: [transfer],
+        });
+        
+        console.log(`[SUCCESS] Transaction sent! Waiting for confirmation...`);
+        
+        // Wait for transaction confirmation
+        let currentSeqno = seqno;
+        let attempts = 0;
+        const maxAttempts = 30; // 60 seconds total
+        
+        while (currentSeqno === seqno && attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          try {
+            currentSeqno = await contract.getSeqno();
+            console.log(`[INFO] Checking confirmation... (${attempts + 1}/${maxAttempts})`);
+          } catch (error) {
+            console.log(`[INFO] Waiting for network confirmation... (${attempts + 1}/${maxAttempts})`);
+          }
+          attempts++;
+        }
+
+        if (currentSeqno === seqno) {
+          console.log(`[WARNING] Transaction timeout after ${maxAttempts * 2} seconds`);
+          return {
+            success: false,
+            error: 'Transaction timeout - please check manually on blockchain explorer',
+          };
+        }
+
+        // Generate transaction identifier based on new sequence number
+        const hash = `blockchain_${wallet.address.toString()}_${currentSeqno}_${Date.now()}`;
+        
+        console.log(`[SUCCESS] ✅ Transaction confirmed! New seqno: ${currentSeqno}`);
+        console.log(`[SUCCESS] 🎉 ${amount} USDT sent to ${destinationAddress}`);
+        console.log(`[INFO] Transaction identifier: ${hash}`);
+        
+        return {
+          success: true,
+          hash: hash,
+        };
+        
+      } catch (sendError) {
+        console.error('[ERROR] Failed to send transaction:', sendError);
+        return {
+          success: false,
+          error: `Transaction failed: ${sendError instanceof Error ? sendError.message : 'Unknown blockchain error'}`,
+        };
+      }
 
     } catch (error) {
       console.error('Error processing withdrawal:', error);
