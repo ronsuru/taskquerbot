@@ -50,7 +50,7 @@ export const taskSubmissions = pgTable("task_submissions", {
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id),
   userId: varchar("user_id").notNull().references(() => users.id),
   proofUrl: text("proof_url"),
-  proofLinks: jsonb("proof_links").$type<string[]>(),
+  proofLinks: jsonb("proof_links").$type<string[] | null>(),
   notes: text("notes"),
   status: text("status").notNull().default("claimed"), // claimed, submitted, approved, rejected, expired
   claimedAt: timestamp("claimed_at").notNull().default(sql`now()`),
@@ -154,6 +154,8 @@ export const insertTaskSubmissionSchema = createInsertSchema(taskSubmissions).om
   id: true,
   createdAt: true,
   reviewedAt: true,
+}).extend({
+  proofLinks: z.array(z.string()).optional().nullable(),
 });
 
 export const insertWithdrawalSchema = createInsertSchema(withdrawals).omit({

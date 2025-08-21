@@ -150,25 +150,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCampaign(id: string): Promise<void> {
-    console.log(`[STORAGE DEBUG] Starting delete process for campaign ${id}`);
     
     try {
       // First delete all related transactions
-      console.log(`[STORAGE DEBUG] Deleting transactions for campaign ${id}`);
       const deletedTransactions = await db.delete(transactions).where(eq(transactions.campaignId, id));
-      console.log(`[STORAGE DEBUG] Deleted transactions result:`, deletedTransactions);
-      
+        
       // Then delete all related task submissions
-      console.log(`[STORAGE DEBUG] Deleting task submissions for campaign ${id}`);
       const deletedSubmissions = await db.delete(taskSubmissions).where(eq(taskSubmissions.campaignId, id));
-      console.log(`[STORAGE DEBUG] Deleted task submissions result:`, deletedSubmissions);
-      
+        
       // Finally delete the campaign
-      console.log(`[STORAGE DEBUG] Deleting campaign ${id}`);
       const deletedCampaign = await db.delete(campaigns).where(eq(campaigns.id, id));
-      console.log(`[STORAGE DEBUG] Deleted campaign result:`, deletedCampaign);
-      console.log(`[STORAGE DEBUG] Campaign ${id} deletion completed successfully`);
-    } catch (error) {
+      } catch (error) {
       console.error(`[STORAGE ERROR] Error deleting campaign ${id}:`, error);
       throw error;
     }

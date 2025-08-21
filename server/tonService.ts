@@ -268,7 +268,7 @@ export class TonService {
         valid: true,
         amount: calculatedAmount,
         sender: senderBounceable,
-        recipient: escrowDestination,
+        recipient: ESCROW_WALLET,
       };
     } catch (error) {
       console.error('Error verifying transaction:', error);
@@ -281,7 +281,6 @@ export class TonService {
     destinationAddress: string, 
     amount: string
   ): Promise<{ success: boolean; hash?: string; error?: string }> {
-    console.log(`[TON SERVICE DEBUG] processWithdrawal called with destination: ${destinationAddress}, amount: ${amount}`);
     try {
       // Validate mnemonic is available
       if (!WALLET_MNEMONIC) {
@@ -292,12 +291,9 @@ export class TonService {
       }
 
       // Validate destination address
-      console.log(`[TON SERVICE DEBUG] Validating address: ${destinationAddress}`);
       const isValidAddress = this.validateAddress(destinationAddress);
-      console.log(`[TON SERVICE DEBUG] Address validation result: ${isValidAddress}`);
       
       if (!isValidAddress) {
-        console.log(`[TON SERVICE DEBUG] Address validation failed for: ${destinationAddress}`);
         return {
           success: false,
           error: 'Invalid destination address',
@@ -337,9 +333,7 @@ export class TonService {
       console.log(`[INFO] Converting ${amount} USDT to ${usdtAmount.toString()} jetton units`);
 
       // Get the bot's USDT jetton wallet address
-      console.log(`[JETTON DEBUG] Getting jetton wallet for bot address: ${wallet.address.toString()}`);
       const botJettonWallet = await this.getJettonWalletAddress(wallet.address.toString(), USDT_MASTER);
-      console.log(`[JETTON DEBUG] Jetton wallet result: ${botJettonWallet}`);
       
       if (!botJettonWallet) {
         console.error(`[JETTON ERROR] Could not determine bot USDT wallet address for ${wallet.address.toString()}`);
@@ -387,7 +381,6 @@ export class TonService {
         console.log(`[INFO] Current sequence number: ${seqno}`);
         
         // Send transaction with retry logic
-        console.log(`[TON SERVICE DEBUG] Sending transaction with seqno: ${seqno}`);
         await this.retryApiCall(async () => {
           return await contract.sendTransfer({
             secretKey: keyPair.secretKey,
@@ -395,7 +388,6 @@ export class TonService {
             messages: [transfer],
           });
         });
-        console.log(`[TON SERVICE DEBUG] Transaction send completed`);
         
         console.log(`[SUCCESS] Transaction sent! Waiting for confirmation...`);
         
@@ -530,7 +522,6 @@ export class TonService {
       }
 
       const url = `https://tonapi.io/v2/accounts/${ownerAddress}/jettons/${jettonMasterAddress}`;
-      console.log(`[JETTON DEBUG] Fetching jetton wallet from: ${url}`);
       
       const response = await fetch(url, {
         headers: {
@@ -538,11 +529,9 @@ export class TonService {
         },
       });
 
-      console.log(`[JETTON DEBUG] TonAPI response status: ${response.status}`);
 
       if (response.ok) {
         const data = await response.json();
-        console.log(`[JETTON DEBUG] TonAPI response data:`, JSON.stringify(data, null, 2));
         
         const walletAddress = data.wallet_address?.address;
         if (walletAddress) {
