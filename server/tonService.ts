@@ -145,10 +145,33 @@ export class TonService {
             const decoded = msg.decoded_body;
             console.log(`[USDT] Decoded body:`, JSON.stringify(decoded, null, 2));
             
-            // Check for jetton transfer operations
+            // Check for wallet V5 actions that contain jetton transfers
+            if (decoded.actions && Array.isArray(decoded.actions)) {
+              for (const action of decoded.actions) {
+                if (action.msg?.message_internal?.body?.value?.sum_type === 'JettonTransfer') {
+                  const jettonTransfer = action.msg.message_internal.body.value.value;
+                  const transferDest = jettonTransfer.destination;
+                  const amount = jettonTransfer.amount;
+                  
+                  console.log(`[USDT] Found jetton transfer in action to: ${transferDest}, amount: ${amount}`);
+                  
+                  // Check if transfer destination matches our escrow wallet
+                  if (transferDest === ESCROW_WALLET || transferDest === escrowWalletRaw ||
+                      (transferDest && transferDest.includes("502cc0c3c3dd36daf65a5cd5dd59f874a26dac3ffe0038d7ab6a33429e672e2d"))) {
+                    foundUSDTTransfer = true;
+                    transferAmount = amount;
+                    console.log(`[USDT] ✅ Valid USDT transfer found! Amount: ${transferAmount}`);
+                    break;
+                  }
+                }
+              }
+              if (foundUSDTTransfer) break;
+            }
+            
+            // Also check for direct jetton transfer operations
             if (decoded.type === 'jetton-transfer' || decoded.operation === 'JettonTransfer') {
               const transferDest = decoded.destination || decoded.to;
-              console.log(`[USDT] Found jetton transfer to: ${transferDest}`);
+              console.log(`[USDT] Found direct jetton transfer to: ${transferDest}`);
               
               // Check if transfer destination matches our escrow wallet
               if (transferDest === ESCROW_WALLET || transferDest === escrowWalletRaw ||
