@@ -1,4 +1,4 @@
-import { TonClient, WalletContractV4, internal } from "@ton/ton";
+import { TonClient, WalletContractV4, internal, Address } from "@ton/ton";
 import { mnemonicToPrivateKey } from "@ton/crypto";
 
 const ESCROW_WALLET = "EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv";
@@ -75,14 +75,25 @@ export class TonService {
       });
 
       const amount = escrowMsg?.value;
-      const sender = data.account?.address;
+      const senderRaw = data.account?.address;
 
-      console.log(`Amount: ${amount}, Sender: ${sender}`);
+      // Convert sender address to bounceable format
+      let senderBounceable = senderRaw;
+      try {
+        if (senderRaw && senderRaw.startsWith('0:')) {
+          const address = Address.parseRaw(senderRaw);
+          senderBounceable = address.toString({ bounceable: true });
+        }
+      } catch (error) {
+        console.log('Could not convert sender address to bounceable format, using raw');
+      }
+
+      console.log(`Amount: ${amount}, Sender: ${senderBounceable}`);
 
       return {
         valid: true,
         amount: amount ? (parseInt(amount) / 1000000000).toString() : "0",
-        sender,
+        sender: senderBounceable,
         recipient: ESCROW_WALLET,
       };
     } catch (error) {
@@ -123,13 +134,34 @@ export class TonService {
     }
   }
 
-  // Validate TON wallet address
+  // Validate TON wallet address (accepts both bounceable and non-bounceable formats)
   validateAddress(address: string): boolean {
     try {
-      // Basic TON address validation
-      return /^EQ[A-Za-z0-9_-]{46}$/.test(address) || /^UQ[A-Za-z0-9_-]{46}$/.test(address);
+      // Check for bounceable (EQ/UQ) format first
+      if (/^EQ[A-Za-z0-9_-]{46}$/.test(address) || /^UQ[A-Za-z0-9_-]{46}$/.test(address)) {
+        return true;
+      }
+      
+      // Also accept raw format for flexibility
+      if (/^0:[a-fA-F0-9]{64}$/.test(address)) {
+        return true;
+      }
+      
+      // Try parsing with TON Address class
+      Address.parse(address);
+      return true;
     } catch {
       return false;
+    }
+  }
+
+  // Convert any TON address to bounceable format
+  toBounceable(address: string): string {
+    try {
+      const addr = Address.parse(address);
+      return addr.toString({ bounceable: true });
+    } catch {
+      return address; // Return original if conversion fails
     }
   }
 

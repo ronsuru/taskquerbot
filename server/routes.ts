@@ -53,6 +53,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(existingUser);
       }
 
+      // Convert wallet address to bounceable format if provided
+      if (userData.walletAddress) {
+        userData.walletAddress = tonService.toBounceable(userData.walletAddress);
+      }
+
       const user = await storage.createUser(userData);
       res.status(201).json(user);
     } catch (error) {

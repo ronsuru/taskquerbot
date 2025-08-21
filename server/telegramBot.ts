@@ -151,7 +151,8 @@ Your account is ready to use!
 
 To activate your account, please send your TON wallet address.
 
-Format: EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv
+✅ Use bounceable format (recommended):
+EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv
 
 ⚠️ Make sure you own this wallet as all payments will be sent here.
       `;
@@ -171,10 +172,11 @@ Format: EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv
         return;
       }
 
-      // Create user account
+      // Convert wallet address to bounceable format and create user account
+      const bounceableAddress = tonService.toBounceable(walletAddress);
       const user = await storage.createUser({
         telegramId,
-        walletAddress,
+        walletAddress: bounceableAddress,
         balance: "0",
         rewards: "0",
         completedTasks: 0
