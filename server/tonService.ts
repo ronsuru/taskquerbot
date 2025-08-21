@@ -1,7 +1,7 @@
 import { TonClient, WalletContractV4, internal, Address, Cell, beginCell } from "@ton/ton";
 import { mnemonicToPrivateKey } from "@ton/crypto";
 
-const ESCROW_WALLET = "EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv";
+const ESCROW_WALLET = "EQBQLMDDw9022vZaXNXdWfh0om2sP_4AONerajNCnmcuLXJh";
 const USDT_MASTER = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"; // Official USDT jetton master address on TON
 const TON_API_KEY = process.env.TON_API_KEY || process.env.TONAPI_KEY || "";
 const WALLET_MNEMONIC = process.env.MNEMONIC_WALLET_KEY || "";
@@ -126,7 +126,7 @@ export class TonService {
       }
 
       // For USDT transactions, we need to analyze jetton transfer messages
-      const escrowWalletRaw = "0:54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"; // Raw format
+      const escrowWalletRaw = "0:502cc0c3c3dd36daf65a5cd5dd59f874a26dac3ffe0038d7ab6a33429e672e2d"; // Raw format
       
       if (isUSDT) {
         console.log('[USDT] Analyzing jetton transfer messages...');
