@@ -159,9 +159,9 @@ export class TonService {
                   
                   console.log(`[USDT] Found jetton transfer in action to: ${transferDest}, amount: ${amount}`);
                   
-                  // Check if transfer destination matches our escrow wallet (use raw format for comparison)
-                  if (transferDest === escrowWalletRaw || transferDest === ESCROW_WALLET ||
-                      (transferDest && transferDest.includes("502cc0c3c3dd36daf65a5cd5dd59f874a26dac3ffe0038d7ab6a33429e672e2d"))) {
+                  // Check if transfer destination matches our escrow wallet (exact match on raw format)
+                  console.log(`[USDT] Comparing: transferDest='${transferDest}' vs escrowWalletRaw='${escrowWalletRaw}'`);
+                  if (transferDest === escrowWalletRaw) {
                     foundUSDTTransfer = true;
                     transferAmount = amount;
                     console.log(`[USDT] ✅ Valid USDT transfer found! Amount: ${transferAmount}`);
