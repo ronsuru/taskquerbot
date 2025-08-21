@@ -1078,17 +1078,22 @@ ${platformEmoji} **${state.title}**
   }
 
   private async handleWithdrawFunds(chatId: number, telegramId: string) {
+    console.log(`[WITHDRAWAL DEBUG] handleWithdrawFunds called for telegram ID: ${telegramId}`);
     try {
       const user = await storage.getUserByTelegramId(telegramId);
+      console.log(`[WITHDRAWAL DEBUG] User lookup result:`, user ? `Found user ${user.id}, balance: ${user.balance}` : 'No user found');
       
       if (!user) {
+        console.log(`[WITHDRAWAL DEBUG] No user found for telegram ID: ${telegramId}`);
         this.bot.sendMessage(chatId, '❌ Please create an account first using "👤 Create Account"');
         return;
       }
 
       const balance = parseFloat(user.balance);
+      console.log(`[WITHDRAWAL DEBUG] User balance parsed: ${balance}`);
       
       if (balance < 0.020) {
+        console.log(`[WITHDRAWAL DEBUG] Balance too low: ${balance} < 0.020`);
         this.bot.sendMessage(chatId, '❌ Minimum withdrawal amount is 0.020 USDT. Complete more tasks to earn rewards!');
         return;
       }
@@ -1397,10 +1402,13 @@ Please check:
   }
 
   private async processWithdrawal(chatId: number, telegramId: string, userId: string, type: string) {
+    console.log(`[WITHDRAWAL DEBUG] Starting withdrawal process for user ${userId}, type: ${type}`);
     try {
       const user = await storage.getUser(userId);
+      console.log(`[WITHDRAWAL DEBUG] User found:`, user ? 'Yes' : 'No');
       
       if (!user) {
+        console.log(`[WITHDRAWAL DEBUG] User not found for ID: ${userId}`);
         this.bot.sendMessage(chatId, '❌ User not found.');
         return;
       }
@@ -1431,7 +1439,9 @@ Please check:
       await storage.updateUserBalance(user.id, '0');
 
       // Process with TON service
+      console.log(`[WITHDRAWAL DEBUG] Calling TON service with address: ${user.walletAddress}, amount: ${finalAmount.toString()}`);
       const result = await tonService.processWithdrawal(user.walletAddress, finalAmount.toString());
+      console.log(`[WITHDRAWAL DEBUG] TON service result:`, result);
       
       if (result.success) {
         await storage.updateWithdrawalStatus(withdrawal.id, 'completed', result.hash);
@@ -1823,7 +1833,9 @@ The slot has been returned to the campaign pool.
       await storage.updateUserBalance(user.id, newBalance.toString());
 
       // Process with TON service
+      console.log(`[CUSTOM WITHDRAWAL DEBUG] Calling TON service with address: ${user.walletAddress}, amount: ${finalAmount.toString()}`);
       const result = await tonService.processWithdrawal(user.walletAddress, finalAmount.toString());
+      console.log(`[CUSTOM WITHDRAWAL DEBUG] TON service result:`, result);
       
       if (result.success) {
         await storage.updateWithdrawalStatus(withdrawal.id, 'completed', result.hash);
