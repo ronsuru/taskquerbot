@@ -476,15 +476,22 @@ Choose an action:
           break;
 
         case 'delete':
-          await storage.deleteCampaign(campaignId);
-          this.bot.sendMessage(chatId, `🗑️ Campaign "${campaign.title}" has been permanently deleted.`, {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🔙 Back to Task Management', callback_data: 'admin_task_menu' }]
-              ]
-            }
-          });
-          console.log(`[ADMIN] Campaign ${campaignId} deleted by admin ${telegramId}`);
+          console.log(`[ADMIN DEBUG] Attempting to delete campaign ${campaignId}`);
+          try {
+            await storage.deleteCampaign(campaignId);
+            console.log(`[ADMIN DEBUG] Campaign ${campaignId} deleted successfully`);
+            this.bot.sendMessage(chatId, `🗑️ Campaign "${campaign.title}" has been permanently deleted.`, {
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '🔙 Back to Task Management', callback_data: 'admin_task_menu' }]
+                ]
+              }
+            });
+            console.log(`[ADMIN] Campaign ${campaignId} deleted by admin ${telegramId}`);
+          } catch (deleteError) {
+            console.error(`[ADMIN ERROR] Failed to delete campaign ${campaignId}:`, deleteError);
+            this.bot.sendMessage(chatId, `❌ Error deleting campaign "${campaign.title}". Please check logs and try again.`);
+          }
           break;
 
         default:
