@@ -889,6 +889,32 @@ Choose analysis type below:
     }
   }
 
+  private async handleRefundByIndex(chatId: number, adminTelegramId: string, targetTelegramId: string, withdrawalIndex: number) {
+    try {
+      const user = await storage.getUserByTelegramId(targetTelegramId);
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ User not found.');
+        return;
+      }
+
+      const userWithdrawals = await storage.getUserWithdrawals(user.id);
+      const failedWithdrawals = userWithdrawals.filter(w => w.status === 'failed');
+      
+      if (withdrawalIndex >= failedWithdrawals.length) {
+        this.bot.sendMessage(chatId, '❌ Withdrawal not found.');
+        return;
+      }
+
+      const withdrawal = failedWithdrawals[withdrawalIndex];
+      const refundAmount = (parseFloat(withdrawal.amount) + parseFloat(withdrawal.fee)).toFixed(4);
+      
+      await this.handleWithdrawalRefund(chatId, adminTelegramId, withdrawal.id, user.id, refundAmount);
+    } catch (error) {
+      console.error('Error processing refund by index:', error);
+      this.bot.sendMessage(chatId, '❌ Error processing refund. Please try again.');
+    }
+  }
+
   private async promptDepositLookupId(chatId: number, telegramId: string) {
     const message = `
 💰 DEPOSIT ANALYSIS
@@ -1074,12 +1100,12 @@ ${failedWithdrawals.length > 0 ? '⚠️ WITHDRAWAL ISSUES DETECTED - Refunds ma
 
       const buttons = [];
       if (failedWithdrawals.length > 0) {
-        // Add refund buttons for failed withdrawals
+        // Add refund buttons for failed withdrawals (use shorter callback data)
         failedWithdrawals.slice(0, 3).forEach((w, i) => {
           const totalRefund = parseFloat(w.amount) + parseFloat(w.fee);
           buttons.push([{ 
             text: `🛠️ Apply Refund ${totalRefund.toFixed(4)} USDT (#${i + 1})`, 
-            callback_data: `fix_withdrawal_${w.id}_${user.id}_${totalRefund.toFixed(4)}` 
+            callback_data: `refund_${i}_${targetTelegramId}` 
           }]);
         });
       }
@@ -2587,6 +2613,18 @@ Please check:
           const userId = parts[3];
           const amount = parts[4];
           await this.handleWithdrawalRefund(msg.chat.id, telegramId, withdrawalId, userId, amount);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      // Handle refund buttons with shorter callback data
+      if (data.startsWith('refund_')) {
+        if (this.isAdmin(telegramId)) {
+          const parts = data.split('_');
+          const withdrawalIndex = parseInt(parts[1]);
+          const targetTelegramId = parts[2];
+          await this.handleRefundByIndex(msg.chat.id, telegramId, targetTelegramId, withdrawalIndex);
         } else {
           this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
         }
