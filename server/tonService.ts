@@ -147,7 +147,11 @@ export class TonService {
             
             // Check for wallet V5 actions that contain jetton transfers
             if (decoded.actions && Array.isArray(decoded.actions)) {
-              for (const action of decoded.actions) {
+              console.log(`[USDT] Found ${decoded.actions.length} actions to check`);
+              for (let i = 0; i < decoded.actions.length; i++) {
+                const action = decoded.actions[i];
+                console.log(`[USDT] Checking action ${i}:`, JSON.stringify(action, null, 2));
+                
                 if (action.msg?.message_internal?.body?.value?.sum_type === 'JettonTransfer') {
                   const jettonTransfer = action.msg.message_internal.body.value.value;
                   const transferDest = jettonTransfer.destination;
@@ -155,13 +159,15 @@ export class TonService {
                   
                   console.log(`[USDT] Found jetton transfer in action to: ${transferDest}, amount: ${amount}`);
                   
-                  // Check if transfer destination matches our escrow wallet
-                  if (transferDest === ESCROW_WALLET || transferDest === escrowWalletRaw ||
+                  // Check if transfer destination matches our escrow wallet (use raw format for comparison)
+                  if (transferDest === escrowWalletRaw || transferDest === ESCROW_WALLET ||
                       (transferDest && transferDest.includes("502cc0c3c3dd36daf65a5cd5dd59f874a26dac3ffe0038d7ab6a33429e672e2d"))) {
                     foundUSDTTransfer = true;
                     transferAmount = amount;
                     console.log(`[USDT] ✅ Valid USDT transfer found! Amount: ${transferAmount}`);
                     break;
+                  } else {
+                    console.log(`[USDT] Transfer destination ${transferDest} does not match escrow ${escrowWalletRaw}`);
                   }
                 }
               }
