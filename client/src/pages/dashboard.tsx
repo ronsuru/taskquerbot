@@ -68,7 +68,7 @@ export default function Dashboard() {
               <h1 className="text-xl font-bold text-slate-900">TaskBot</h1>
             </div>
             <div className="flex items-center space-x-4">
-              {user?.isAdmin && (
+              {user?.telegramId === "5154336054" && (
                 <a href="/admin" className="text-slate-600 hover:text-telegram-blue transition-colors">
                   <Button variant="default" size="sm" className="bg-red-600 hover:bg-red-700">
                     <Settings className="w-4 h-4 mr-2" />

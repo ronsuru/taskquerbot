@@ -60,10 +60,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const user = await storage.createUser(userData);
       
-      // Auto-grant admin access to specified user ID
-      if (user.id === "79da10b5-36c3-40b5-a4e1-d4eec60ecd9b") {
+      // Auto-grant admin access to specified Telegram ID
+      if (user.telegramId === "5154336054") {
         await storage.makeUserAdmin(user.id);
-        console.log(`Admin access granted to user: ${user.id}`);
+        console.log(`Admin access granted to Telegram ID: ${user.telegramId}`);
       }
       
       res.status(201).json(user);
@@ -384,16 +384,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Admin middleware
   const requireAdmin = async (req: any, res: any, next: any) => {
-    const userId = req.headers['x-user-id'];
-    if (!userId) {
+    const telegramId = req.headers['x-user-id'];
+    if (!telegramId) {
       return res.status(401).json({ error: 'User ID required' });
     }
 
-    const user = await storage.getUser(userId);
-    if (!user || !user.isAdmin) {
+    // Check if the user is the admin by Telegram ID
+    if (telegramId !== '5154336054') {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
+    const user = await storage.getUserByTelegramId(telegramId);
     req.user = user;
     next();
   };
