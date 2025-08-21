@@ -66,7 +66,7 @@ export const withdrawals = pgTable("withdrawals", {
   amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),
   fee: decimal("fee", { precision: 18, scale: 8 }).notNull(),
   destinationWallet: text("destination_wallet").notNull(),
-  status: text("status").notNull().default("pending"), // pending, processing, completed, failed
+  status: text("status").notNull().default("pending"), // pending, processing, completed, failed, refunded
   hash: text("hash"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });

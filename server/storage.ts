@@ -207,7 +207,7 @@ export class DatabaseStorage implements IStorage {
   async createTaskSubmission(insertSubmission: InsertTaskSubmission): Promise<TaskSubmission> {
     const [submission] = await db
       .insert(taskSubmissions)
-      .values([insertSubmission])
+      .values(insertSubmission)
       .returning();
     return submission;
   }

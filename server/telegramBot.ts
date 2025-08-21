@@ -642,6 +642,12 @@ This will show their account balance, transaction history, and verification stat
       // Get user campaigns and submissions
       const campaigns = await storage.getUserCampaigns(user.id);
       const submissions = await storage.getUserSubmissions(user.id);
+      
+      // Get user withdrawals for verification
+      const userWithdrawals = await storage.getUserWithdrawals(user.id);
+      const pendingWithdrawals = userWithdrawals.filter(w => w.status === 'pending');
+      const failedWithdrawals = userWithdrawals.filter(w => w.status === 'failed');
+      const completedWithdrawals = userWithdrawals.filter(w => w.status === 'completed');
 
       const accountMessage = `
 🔍 User Account Information
@@ -678,10 +684,20 @@ This will show their account balance, transaction history, and verification stat
 • Task Submissions: ${submissions.length}
 • Account Status: Active
 
+💳 Withdrawal Status:
+• Completed: ${completedWithdrawals.length} withdrawals
+• Pending: ${pendingWithdrawals.length} ${pendingWithdrawals.length > 0 ? '⚠️' : ''}
+• Failed: ${failedWithdrawals.length} ${failedWithdrawals.length > 0 ? '❌ NEEDS REVIEW!' : ''}
+
 Recent Transactions (Last 5):
 ${transactions.slice(0, 5).map((t, i) => 
   `${i + 1}. ${t.type.toUpperCase()} - ${t.amount} USDT (${new Date(t.createdAt).toLocaleDateString()})`
 ).join('\n') || 'No transactions found'}
+
+${userWithdrawals.length > 0 ? `Recent Withdrawals:
+${userWithdrawals.slice(0, 3).map((w, i) => 
+  `${i + 1}. ${w.amount} USDT - ${w.status.toUpperCase()} (${new Date(w.createdAt).toLocaleDateString()})`
+).join('\n')}` : 'No withdrawals found'}
       `;
 
       this.bot.sendMessage(chatId, accountMessage, {
@@ -689,6 +705,7 @@ ${transactions.slice(0, 5).map((t, i) =>
         reply_markup: {
           inline_keyboard: [
             ...(balanceDiscrepancy ? [[{ text: '🔧 Fix Balance', callback_data: `fix_balance_${targetTelegramId}_${calculatedBalance.toFixed(8)}` }]] : []),
+            ...(failedWithdrawals.length > 0 ? [[{ text: '🔄 Review Failed Withdrawals', callback_data: `review_withdrawals_${targetTelegramId}` }]] : []),
             [{ text: '🔍 Lookup Another User', callback_data: 'admin_user_lookup' }],
             [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
           ]
@@ -735,6 +752,136 @@ ${transactions.slice(0, 5).map((t, i) =>
     } catch (error) {
       console.error('Error fixing balance:', error);
       this.bot.sendMessage(chatId, '❌ Error correcting balance. Please try again.');
+    }
+  }
+
+  private async showWithdrawalReview(chatId: number, adminTelegramId: string, targetTelegramId: string) {
+    try {
+      const user = await storage.getUserByTelegramId(targetTelegramId);
+      if (!user) {
+        this.bot.sendMessage(chatId, `❌ User with Telegram ID ${targetTelegramId} not found.`);
+        return;
+      }
+
+      const withdrawals = await storage.getUserWithdrawals(user.id);
+      const failedWithdrawals = withdrawals.filter(w => w.status === 'failed');
+      const pendingWithdrawals = withdrawals.filter(w => w.status === 'pending');
+      
+      if (failedWithdrawals.length === 0 && pendingWithdrawals.length === 0) {
+        this.bot.sendMessage(chatId, `✅ No problematic withdrawals found for user ${targetTelegramId}.`);
+        return;
+      }
+
+      let reviewMessage = `
+🔎 Withdrawal Review for ${targetTelegramId}
+
+👤 User Balance: ${user.balance} USDT
+
+`;
+
+      if (failedWithdrawals.length > 0) {
+        reviewMessage += `❌ Failed Withdrawals (${failedWithdrawals.length}):
+`;
+        failedWithdrawals.slice(0, 5).forEach((w, i) => {
+          reviewMessage += `${i + 1}. ${w.amount} USDT to ${w.destinationWallet.substring(0, 10)}...
+   📅 ${new Date(w.createdAt).toLocaleString()}
+   💳 Fee: ${w.fee} USDT | Status: FAILED
+
+`;
+        });
+      }
+
+      if (pendingWithdrawals.length > 0) {
+        reviewMessage += `⏳ Pending Withdrawals (${pendingWithdrawals.length}):
+`;
+        pendingWithdrawals.slice(0, 3).forEach((w, i) => {
+          reviewMessage += `${i + 1}. ${w.amount} USDT to ${w.destinationWallet.substring(0, 10)}...
+   📅 ${new Date(w.createdAt).toLocaleString()}
+   💳 Fee: ${w.fee} USDT | Status: PENDING
+
+`;
+        });
+      }
+
+      reviewMessage += `⚠️ Admin Actions Available:
+• Refund failed withdrawals (restores user balance)
+• Mark pending as failed if blockchain confirms failure
+• Verify withdrawal status on blockchain`;
+
+      const buttons = [];
+      
+      // Add refund buttons for failed withdrawals
+      failedWithdrawals.slice(0, 3).forEach((w, i) => {
+        const totalRefund = parseFloat(w.amount) + parseFloat(w.fee);
+        buttons.push([{ 
+          text: `🔄 Refund ${totalRefund.toFixed(8)} USDT (Failed #${i + 1})`, 
+          callback_data: `fix_withdrawal_${w.id}_${user.id}_${totalRefund.toFixed(8)}` 
+        }]);
+      });
+      
+      buttons.push([{ text: '🔙 Back to User Lookup', callback_data: 'admin_user_lookup' }]);
+
+      this.bot.sendMessage(chatId, reviewMessage, {
+        reply_markup: {
+          inline_keyboard: buttons
+        }
+      });
+    } catch (error) {
+      console.error('Error reviewing withdrawals:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading withdrawal information. Please try again.');
+    }
+  }
+
+  private async handleWithdrawalRefund(chatId: number, adminTelegramId: string, withdrawalId: string, userId: string, refundAmount: string) {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ User not found.');
+        return;
+      }
+
+      const oldBalance = user.balance;
+      const newBalance = (parseFloat(oldBalance) + parseFloat(refundAmount)).toString();
+      await storage.updateUserBalance(userId, newBalance);
+
+      // Update withdrawal status to indicate it was refunded
+      await storage.updateWithdrawalStatus(withdrawalId, 'refunded');
+
+      // Create a transaction record for the refund
+      await storage.createTransaction({
+        userId: userId,
+        type: 'deposit', // Treat refund as a deposit to restore balance
+        amount: refundAmount,
+        fee: '0',
+        status: 'completed',
+        hash: `refund_${withdrawalId}`
+      });
+
+      const confirmMessage = `
+🔄 Withdrawal Refund Completed!
+
+👤 User: ${user.telegramId}
+💰 Refund Details:
+• Refund Amount: ${refundAmount} USDT
+• Old Balance: ${oldBalance} USDT
+• New Balance: ${newBalance} USDT
+
+✅ Failed withdrawal has been refunded and user balance restored.
+      `;
+
+      this.bot.sendMessage(chatId, confirmMessage, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔍 View Updated Account', callback_data: 'admin_user_lookup' }],
+            [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
+          ]
+        }
+      });
+
+      console.log(`[ADMIN] Withdrawal refunded: ${refundAmount} USDT to user ${user.telegramId} by admin ${adminTelegramId}`);
+    } catch (error) {
+      console.error('Error processing withdrawal refund:', error);
+      this.bot.sendMessage(chatId, '❌ Error processing refund. Please try again.');
     }
   }
 
@@ -2203,6 +2350,29 @@ Please check:
           const targetTelegramId = parts[2];
           const correctBalance = parts[3];
           await this.handleBalanceFix(msg.chat.id, telegramId, targetTelegramId, correctBalance);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      // Handle withdrawal review
+      if (data.startsWith('review_withdrawals_')) {
+        if (this.isAdmin(telegramId)) {
+          const targetTelegramId = data.split('_')[2];
+          await this.showWithdrawalReview(msg.chat.id, telegramId, targetTelegramId);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      // Handle individual withdrawal fix
+      if (data.startsWith('fix_withdrawal_')) {
+        if (this.isAdmin(telegramId)) {
+          const parts = data.split('_');
+          const withdrawalId = parts[2];
+          const userId = parts[3];
+          const amount = parts[4];
+          await this.handleWithdrawalRefund(msg.chat.id, telegramId, withdrawalId, userId, amount);
         } else {
           this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
         }
