@@ -650,44 +650,42 @@ This will show their account balance, transaction history, and verification stat
       const completedWithdrawals = userWithdrawals.filter(w => w.status === 'completed');
 
       const accountMessage = `
-🔍 User Account Information
+🔍 USER ACCOUNT OVERVIEW
 
-👤 User Details:
+👤 Account Details:
 • Telegram ID: ${targetTelegramId}
 • Wallet: ${user.walletAddress}
 • Admin Status: ${user.isAdmin ? '✅ Yes' : '❌ No'}
 • Registration: ${new Date(user.createdAt).toLocaleString()}
 
-💰 Account Balance:
-• Stored Balance: ${user.balance} USDT
+💳 Balance Status:
+• Current Balance: ${user.balance} USDT
 • Calculated Balance: ${calculatedBalance.toFixed(8)} USDT ${balanceDiscrepancy ? '⚠️ MISMATCH!' : '✅'}
-• Total Rewards: ${user.rewards} USDT
-• Tasks Completed: ${user.completedTasks}
+• Total Rewards: ${user.rewards} USDT | Tasks: ${user.completedTasks}
 
-📊 Balance Breakdown:
-• Deposits: +${totalDeposited.toFixed(8)} USDT
-• Rewards: +${totalRewards.toFixed(8)} USDT
-• Withdrawals: -${totalWithdrawn.toFixed(8)} USDT
-• Campaign Funding: -${totalCampaignFunding.toFixed(8)} USDT
-• Fees: -${totalFees.toFixed(8)} USDT
+💰 DEPOSIT SUMMARY:
+• Total Deposited: +${totalDeposited.toFixed(8)} USDT (${deposits.length} txns)
+• Rewards Earned: +${totalRewards.toFixed(8)} USDT (${rewards.length} txns)
+• Balance Issues: ${balanceDiscrepancy ? '⚠️ DEPOSIT MISMATCH DETECTED' : '✅ No Issues'}
 
-🔍 Transaction Count Summary:
-• Deposits: ${deposits.length} | Rewards: ${rewards.length}
-• Withdrawals: ${withdrawals.length} | Campaign Funding: ${campaignFunding.length} | Fees: ${fees.length}
+💸 WITHDRAWAL SUMMARY:
+• Withdrawals: -${totalWithdrawn.toFixed(8)} USDT (${withdrawals.length} txns)
+• Campaign Costs: -${totalCampaignFunding.toFixed(8)} USDT (${campaignFunding.length} txns)
+• Fees Paid: -${totalFees.toFixed(8)} USDT (${fees.length} txns)
+• Withdrawal Issues: ${failedWithdrawals.length > 0 ? '⚠️ ' + failedWithdrawals.length + ' FAILED WITHDRAWALS' : '✅ No Issues'}
 
 💳 Deposit History:
 • Total Deposited: ${totalDeposited.toFixed(8)} USDT
 • Deposit Count: ${depositCount} transactions
 
-📋 Activity Summary:
+📋 Account Activity:
 • Campaigns Created: ${campaigns.length}
 • Task Submissions: ${submissions.length}
-• Account Status: Active
+• Account Status: ${user.isAdmin ? 'Admin' : 'Active'}
 
-💳 Withdrawal Status:
-• Completed: ${completedWithdrawals.length} withdrawals
-• Pending: ${pendingWithdrawals.length} ${pendingWithdrawals.length > 0 ? '⚠️' : ''}
-• Failed: ${failedWithdrawals.length} ${failedWithdrawals.length > 0 ? '❌ NEEDS REVIEW!' : ''}
+🎯 ISSUE DETECTION:
+• Deposit Issues: ${balanceDiscrepancy ? '⚠️ Balance mismatch needs review' : '✅ All deposits verified'}
+• Withdrawal Issues: ${failedWithdrawals.length > 0 ? '❌ ' + failedWithdrawals.length + ' failed withdrawals need refund' : '✅ All withdrawals successful'}
 
 Recent Transactions (Last 5):
 ${transactions.slice(0, 5).map((t, i) => 
@@ -704,8 +702,8 @@ ${userWithdrawals.slice(0, 3).map((w, i) =>
         disable_web_page_preview: true,
         reply_markup: {
           inline_keyboard: [
-            ...(balanceDiscrepancy ? [[{ text: '🔧 Fix Balance', callback_data: `fix_balance_${targetTelegramId}_${calculatedBalance.toFixed(8)}` }]] : []),
-            ...(failedWithdrawals.length > 0 ? [[{ text: '🔄 Review Failed Withdrawals', callback_data: `review_withdrawals_${targetTelegramId}` }]] : []),
+            ...(balanceDiscrepancy ? [[{ text: '💰 Fix Deposit Issues', callback_data: `fix_balance_${targetTelegramId}_${calculatedBalance.toFixed(8)}` }]] : []),
+            ...(failedWithdrawals.length > 0 ? [[{ text: '💸 Fix Withdrawal Issues', callback_data: `review_withdrawals_${targetTelegramId}` }]] : []),
             [{ text: '🔍 Lookup Another User', callback_data: 'admin_user_lookup' }],
             [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
           ]
@@ -728,15 +726,29 @@ ${userWithdrawals.slice(0, 3).map((w, i) =>
       const oldBalance = user.balance;
       await storage.updateUserBalance(user.id, correctBalance);
 
+      // Create audit transaction for the correction
+      const difference = parseFloat(correctBalance) - parseFloat(oldBalance);
+      if (difference !== 0) {
+        await storage.createTransaction({
+          userId: user.id,
+          type: difference > 0 ? 'deposit' : 'fee',
+          amount: Math.abs(difference).toString(),
+          fee: '0',
+          status: 'completed',
+          hash: `balance_correction_${Date.now()}`
+        });
+      }
+
       const confirmMessage = `
-🔧 Balance Corrected Successfully!
+💰 DEPOSIT ISSUE RESOLVED
 
 👤 User: ${targetTelegramId}
-🔄 Balance Updated:
-• Old Balance: ${oldBalance} USDT
-• New Balance: ${correctBalance} USDT
+🔧 Balance Correction Details:
+• Previous Balance: ${oldBalance} USDT
+• Corrected Balance: ${correctBalance} USDT
+• Adjustment: ${difference.toFixed(8)} USDT ${difference > 0 ? '(Added)' : '(Deducted)'}
 
-✅ Balance has been corrected based on transaction history.
+✅ Deposit discrepancy corrected with full audit trail.
       `;
 
       this.bot.sendMessage(chatId, confirmMessage, {
@@ -748,10 +760,10 @@ ${userWithdrawals.slice(0, 3).map((w, i) =>
         }
       });
 
-      console.log(`[ADMIN] Balance corrected for user ${targetTelegramId}: ${oldBalance} -> ${correctBalance} by admin ${adminTelegramId}`);
+      console.log(`[ADMIN] Deposit balance corrected for user ${targetTelegramId}: ${oldBalance} -> ${correctBalance} by admin ${adminTelegramId}`);
     } catch (error) {
-      console.error('Error fixing balance:', error);
-      this.bot.sendMessage(chatId, '❌ Error correcting balance. Please try again.');
+      console.error('Error fixing deposit balance:', error);
+      this.bot.sendMessage(chatId, '❌ Error correcting deposit balance. Please try again.');
     }
   }
 
@@ -814,8 +826,8 @@ ${userWithdrawals.slice(0, 3).map((w, i) =>
       failedWithdrawals.slice(0, 3).forEach((w, i) => {
         const totalRefund = parseFloat(w.amount) + parseFloat(w.fee);
         buttons.push([{ 
-          text: `🔄 Refund ${totalRefund.toFixed(8)} USDT (Failed #${i + 1})`, 
-          callback_data: `fix_withdrawal_${w.id}_${user.id}_${totalRefund.toFixed(8)}` 
+          text: `🔄 Refund ${totalRefund.toFixed(4)} USDT (Failed #${i + 1})`, 
+          callback_data: `fix_withdrawal_${w.id}_${user.id}_${totalRefund.toFixed(4)}` 
         }]);
       });
       
@@ -858,15 +870,15 @@ ${userWithdrawals.slice(0, 3).map((w, i) =>
       });
 
       const confirmMessage = `
-🔄 Withdrawal Refund Completed!
+💸 WITHDRAWAL ISSUE RESOLVED
 
 👤 User: ${user.telegramId}
-💰 Refund Details:
-• Refund Amount: ${refundAmount} USDT
-• Old Balance: ${oldBalance} USDT
-• New Balance: ${newBalance} USDT
+💰 Refund Process Completed:
+• Refunded Amount: ${refundAmount} USDT
+• Previous Balance: ${oldBalance} USDT
+• Restored Balance: ${newBalance} USDT
 
-✅ Failed withdrawal has been refunded and user balance restored.
+✅ Failed withdrawal refunded - user balance fully restored.
       `;
 
       this.bot.sendMessage(chatId, confirmMessage, {
@@ -878,7 +890,7 @@ ${userWithdrawals.slice(0, 3).map((w, i) =>
         }
       });
 
-      console.log(`[ADMIN] Withdrawal refunded: ${refundAmount} USDT to user ${user.telegramId} by admin ${adminTelegramId}`);
+      console.log(`[ADMIN] Withdrawal issue resolved: ${refundAmount} USDT refunded to user ${user.telegramId} by admin ${adminTelegramId}`);
     } catch (error) {
       console.error('Error processing withdrawal refund:', error);
       this.bot.sendMessage(chatId, '❌ Error processing refund. Please try again.');
