@@ -240,11 +240,17 @@ export class TonService {
       console.log(`[INFO] Converting ${amount} USDT to ${usdtAmount.toString()} jetton units`);
 
       // Get the bot's USDT jetton wallet address
+      console.log(`[JETTON DEBUG] Getting jetton wallet for bot address: ${wallet.address.toString()}`);
       const botJettonWallet = await this.getJettonWalletAddress(wallet.address.toString(), USDT_MASTER);
+      console.log(`[JETTON DEBUG] Jetton wallet result: ${botJettonWallet}`);
+      
       if (!botJettonWallet) {
+        console.error(`[JETTON ERROR] Could not determine bot USDT wallet address for ${wallet.address.toString()}`);
+        console.log(`[JETTON INFO] This usually means the bot wallet has never received USDT tokens before`);
+        console.log(`[JETTON INFO] Bot needs to receive USDT first before it can send USDT to others`);
         return {
           success: false,
-          error: 'Could not determine bot USDT wallet address',
+          error: 'Bot wallet has no USDT tokens. Please fund the bot with USDT first.',
         };
       }
 
@@ -354,7 +360,8 @@ export class TonService {
       }
 
     } catch (error) {
-      console.error('Error processing withdrawal:', error);
+      console.error('[WITHDRAWAL ERROR] Error processing withdrawal:', error);
+      console.error('[WITHDRAWAL ERROR] Full error details:', JSON.stringify(error, null, 2));
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Transaction failed',
@@ -417,28 +424,40 @@ export class TonService {
   async getJettonWalletAddress(ownerAddress: string, jettonMasterAddress: string): Promise<string | null> {
     try {
       if (!TON_API_KEY) {
-        console.log('[JETTON] No TonAPI key, cannot get jetton wallet address');
+        console.error('[JETTON ERROR] No TonAPI key configured, cannot get jetton wallet address');
         return null;
       }
 
-      const response = await fetch(
-        `https://tonapi.io/v2/accounts/${ownerAddress}/jettons/${jettonMasterAddress}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${TON_API_KEY}`,
-          },
-        }
-      );
+      const url = `https://tonapi.io/v2/accounts/${ownerAddress}/jettons/${jettonMasterAddress}`;
+      console.log(`[JETTON DEBUG] Fetching jetton wallet from: ${url}`);
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${TON_API_KEY}`,
+        },
+      });
+
+      console.log(`[JETTON DEBUG] TonAPI response status: ${response.status}`);
 
       if (response.ok) {
         const data = await response.json();
-        return data.wallet_address?.address || null;
+        console.log(`[JETTON DEBUG] TonAPI response data:`, JSON.stringify(data, null, 2));
+        
+        const walletAddress = data.wallet_address?.address;
+        if (walletAddress) {
+          console.log(`[JETTON SUCCESS] Found jetton wallet: ${walletAddress}`);
+          return walletAddress;
+        } else {
+          console.error('[JETTON ERROR] No wallet_address in response or wallet not initialized');
+          return null;
+        }
+      } else {
+        const errorText = await response.text();
+        console.error(`[JETTON ERROR] TonAPI error ${response.status}: ${errorText}`);
+        return null;
       }
-
-      console.log(`[JETTON] Could not get jetton wallet address: ${response.status}`);
-      return null;
     } catch (error) {
-      console.error('[JETTON] Error getting jetton wallet address:', error);
+      console.error('[JETTON ERROR] Exception getting jetton wallet address:', error);
       return null;
     }
   }
