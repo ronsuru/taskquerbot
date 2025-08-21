@@ -5,6 +5,19 @@ import { tonService } from './tonService';
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const ESCROW_WALLET = "EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv";
 
+// Campaign creation state management
+interface CampaignCreationState {
+  step: 'platform' | 'title' | 'description' | 'reward' | 'slots' | 'url' | 'confirm';
+  platform?: string;
+  title?: string;
+  description?: string;
+  reward?: number;
+  slots?: number;
+  url?: string;
+}
+
+const campaignCreationStates = new Map<string, CampaignCreationState>();
+
 export class TaskBot {
   private bot: TelegramBot;
 
@@ -87,13 +100,17 @@ Use /menu to see all available commands.
       }
     });
 
-    // Handle campaign creation messages
-    this.bot.onText(/^Title:/i, async (msg) => {
+    // Handle campaign creation conversation
+    this.bot.on('message', async (msg) => {
       const chatId = msg.chat.id;
       const telegramId = msg.from?.id.toString() || '';
       const text = msg.text || '';
 
-      await this.parseCampaignCreation(chatId, telegramId, text);
+      // Check if user is in campaign creation flow
+      const state = campaignCreationStates.get(telegramId);
+      if (state && text && !text.startsWith('/') && !text.match(/^(EQ|UQ)[A-Za-z0-9_-]{46}$/) && !text.match(/^[a-fA-F0-9]{64}$/)) {
+        await this.handleCampaignCreationStep(chatId, telegramId, text, state);
+      }
     });
 
     // Handle transaction hash verification
@@ -400,16 +417,20 @@ Would you like to create a new campaign?
         return;
       }
 
+      // Initialize campaign creation state
+      campaignCreationStates.set(telegramId, { step: 'platform' });
+
       const createMessage = `
 🎯 Create New Campaign
 
-📝 Platform Selection:
+📝 **Step 1: Platform Selection**
+
 Choose which platform you want to create a campaign for:
 
-🐦 Twitter - Posts, retweets, likes
-📱 TikTok - Videos, comments, follows
-📘 Facebook - Posts, shares, likes
-💬 Telegram - Channel joins, shares
+🐦 **Twitter** - Posts, retweets, likes
+📱 **TikTok** - Videos, comments, follows  
+📘 **Facebook** - Posts, shares, likes
+💬 **Telegram** - Channel joins, shares
 
 Select a platform to continue:
       `;
@@ -421,7 +442,7 @@ Select a platform to continue:
             [{ text: '📱 TikTok', callback_data: 'create_platform_tiktok' }],
             [{ text: '📘 Facebook', callback_data: 'create_platform_facebook' }],
             [{ text: '💬 Telegram', callback_data: 'create_platform_telegram' }],
-            [{ text: '🔙 Back to My Campaigns', callback_data: 'back_to_campaigns' }]
+            [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }]
           ]
         }
       });
@@ -502,6 +523,17 @@ You haven't created any campaigns yet. Click "✨ Create New Campaign" to get st
         return;
       }
 
+      // Update campaign creation state
+      const state = campaignCreationStates.get(telegramId);
+      if (!state) {
+        this.bot.sendMessage(chatId, '❌ Campaign creation session expired. Please start again.');
+        return;
+      }
+
+      state.platform = platform;
+      state.step = 'title';
+      campaignCreationStates.set(telegramId, state);
+
       const platformEmoji = {
         'twitter': '🐦',
         'tiktok': '📱',
@@ -509,40 +541,30 @@ You haven't created any campaigns yet. Click "✨ Create New Campaign" to get st
         'telegram': '💬'
       }[platform] || '🎯';
 
-      const instructionMessage = `
+      const titleMessage = `
 ${platformEmoji} Creating ${platform.toUpperCase()} Campaign
 
-📝 Campaign Setup Instructions:
+📝 **Step 2: Campaign Title**
 
-Please send the following information in this format:
+What's the title of your campaign?
 
-**Title:** Your campaign title
-**Description:** What users need to do
-**Reward:** Amount in USDT per task (e.g., 0.5)
-**Slots:** Number of people needed (e.g., 100)
-**URL:** Link to your ${platform} content
+💡 **Examples:**
+• "Like my latest Twitter post"
+• "Follow my TikTok account"  
+• "Join my Telegram channel"
+• "Share my Facebook post"
 
-💡 Example:
-Title: Like my Twitter post
-Description: Like and retweet my latest post about crypto
-Reward: 0.25
-Slots: 500
-URL: https://twitter.com/username/status/123456789
-
-Send all information in your next message to create the campaign!
+Please type your campaign title:
       `;
 
-      this.bot.sendMessage(chatId, instructionMessage, {
+      this.bot.sendMessage(chatId, titleMessage, {
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🔙 Back to Platform Selection', callback_data: 'create_campaign' }]
+            [{ text: '🔙 Back to Platform Selection', callback_data: 'create_campaign' }],
+            [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }]
           ]
         }
       });
-
-      // Store the platform selection in a temporary state
-      // Note: In a real implementation, you'd want to use a proper state management system
-      // For now, we'll rely on the user sending the properly formatted message
 
     } catch (error) {
       console.error('Error in handlePlatformCampaignCreation:', error);
@@ -550,62 +572,270 @@ Send all information in your next message to create the campaign!
     }
   }
 
-  private async parseCampaignCreation(chatId: number, telegramId: string, text: string) {
+  private async handleCampaignCreationStep(chatId: number, telegramId: string, text: string, state: CampaignCreationState) {
     try {
       const user = await storage.getUserByTelegramId(telegramId);
       
       if (!user) {
         this.bot.sendMessage(chatId, '❌ Please create an account first using "👤 Create Account"');
+        campaignCreationStates.delete(telegramId);
         return;
       }
 
-      // Parse the campaign details
-      const titleMatch = text.match(/Title:\s*(.+)/i);
-      const descriptionMatch = text.match(/Description:\s*(.+)/i);
-      const rewardMatch = text.match(/Reward:\s*([0-9.]+)/i);
-      const slotsMatch = text.match(/Slots:\s*([0-9]+)/i);
-      const urlMatch = text.match(/URL:\s*(https?:\/\/\S+)/i);
-
-      if (!titleMatch || !descriptionMatch || !rewardMatch || !slotsMatch || !urlMatch) {
-        this.bot.sendMessage(chatId, `
-❌ Invalid format! Please include all required fields:
-
-**Title:** Your campaign title
-**Description:** What users need to do
-**Reward:** Amount in USDT per task
-**Slots:** Number of people needed
-**URL:** Link to your content
-
-Example:
-Title: Like my Twitter post
-Description: Like and retweet my latest post
-Reward: 0.25
-Slots: 100
-URL: https://twitter.com/username/status/123
-        `);
-        return;
+      switch (state.step) {
+        case 'title':
+          await this.handleTitleStep(chatId, telegramId, text, state);
+          break;
+        case 'description':
+          await this.handleDescriptionStep(chatId, telegramId, text, state);
+          break;
+        case 'reward':
+          await this.handleRewardStep(chatId, telegramId, text, state);
+          break;
+        case 'slots':
+          await this.handleSlotsStep(chatId, telegramId, text, state);
+          break;
+        case 'url':
+          await this.handleUrlStep(chatId, telegramId, text, state);
+          break;
+        case 'confirm':
+          await this.handleConfirmStep(chatId, telegramId, text, state, user);
+          break;
       }
 
-      const title = titleMatch[1].trim();
-      const description = descriptionMatch[1].trim();
-      const rewardAmount = parseFloat(rewardMatch[1]);
-      const totalSlots = parseInt(slotsMatch[1]);
-      const taskUrl = urlMatch[1].trim();
+    } catch (error) {
+      console.error('Error in handleCampaignCreationStep:', error);
+      this.bot.sendMessage(chatId, '❌ Error processing your input. Please try again.');
+    }
+  }
 
-      // Determine platform from URL
-      let platform = 'other';
-      if (taskUrl.includes('twitter.com') || taskUrl.includes('x.com')) {
-        platform = 'twitter';
-      } else if (taskUrl.includes('tiktok.com')) {
-        platform = 'tiktok';
-      } else if (taskUrl.includes('facebook.com')) {
-        platform = 'facebook';
-      } else if (taskUrl.includes('t.me')) {
-        platform = 'telegram';
+  private async handleTitleStep(chatId: number, telegramId: string, text: string, state: CampaignCreationState) {
+    state.title = text.trim();
+    state.step = 'description';
+    campaignCreationStates.set(telegramId, state);
+
+    const platformEmoji = {
+      'twitter': '🐦',
+      'tiktok': '📱',
+      'facebook': '📘',
+      'telegram': '💬'
+    }[state.platform!] || '🎯';
+
+    this.bot.sendMessage(chatId, `
+${platformEmoji} Creating ${state.platform!.toUpperCase()} Campaign
+
+📝 **Step 3: Description** (Optional)
+
+Great! Your title: "${text}"
+
+Now, please describe what users need to do to complete this task.
+
+💡 **Examples:**
+• "Like and retweet this post"
+• "Follow my account and like 3 recent posts"
+• "Join the channel and stay for 1 week"
+• "Share this post and tag 2 friends"
+
+Type "skip" if you want to skip this step, or provide a description:
+    `, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '⏭️ Skip Description', callback_data: 'skip_description' }],
+          [{ text: '🔙 Back to Title', callback_data: 'back_to_title' }],
+          [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }]
+        ]
+      }
+    });
+  }
+
+  private async handleDescriptionStep(chatId: number, telegramId: string, text: string, state: CampaignCreationState) {
+    if (text.toLowerCase() !== 'skip') {
+      state.description = text.trim();
+    }
+    state.step = 'reward';
+    campaignCreationStates.set(telegramId, state);
+
+    const platformEmoji = {
+      'twitter': '🐦',
+      'tiktok': '📱',
+      'facebook': '📘',
+      'telegram': '💬'
+    }[state.platform!] || '🎯';
+
+    this.bot.sendMessage(chatId, `
+${platformEmoji} Creating ${state.platform!.toUpperCase()} Campaign
+
+💰 **Step 4: Reward Amount**
+
+How much USDT will you pay per completed task?
+
+💡 **Suggested amounts:**
+• Simple tasks (like, follow): 0.1 - 0.5 USDT
+• Medium tasks (comment, share): 0.5 - 1.0 USDT
+• Complex tasks (content creation): 1.0 - 5.0 USDT
+
+Please enter the reward amount (numbers only, e.g., 0.25):
+    `, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '💰 0.1', callback_data: 'reward_0.1' }, { text: '💰 0.25', callback_data: 'reward_0.25' }],
+          [{ text: '💰 0.5', callback_data: 'reward_0.5' }, { text: '💰 1.0', callback_data: 'reward_1.0' }],
+          [{ text: '🔙 Back to Description', callback_data: 'back_to_description' }],
+          [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }]
+        ]
+      }
+    });
+  }
+
+  private async handleRewardStep(chatId: number, telegramId: string, text: string, state: CampaignCreationState) {
+    const reward = parseFloat(text);
+    if (isNaN(reward) || reward <= 0) {
+      this.bot.sendMessage(chatId, '❌ Please enter a valid number greater than 0 (e.g., 0.25)');
+      return;
+    }
+
+    state.reward = reward;
+    state.step = 'slots';
+    campaignCreationStates.set(telegramId, state);
+
+    const platformEmoji = {
+      'twitter': '🐦',
+      'tiktok': '📱',
+      'facebook': '📘',
+      'telegram': '💬'
+    }[state.platform!] || '🎯';
+
+    this.bot.sendMessage(chatId, `
+${platformEmoji} Creating ${state.platform!.toUpperCase()} Campaign
+
+👥 **Step 5: Number of Participants**
+
+How many people do you want to complete this task?
+
+💡 **Recommendations:**
+• Small campaign: 50-100 people
+• Medium campaign: 100-500 people  
+• Large campaign: 500-1000+ people
+
+Please enter the number of participants needed:
+    `, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '👥 50', callback_data: 'slots_50' }, { text: '👥 100', callback_data: 'slots_100' }],
+          [{ text: '👥 250', callback_data: 'slots_250' }, { text: '👥 500', callback_data: 'slots_500' }],
+          [{ text: '🔙 Back to Reward', callback_data: 'back_to_reward' }],
+          [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }]
+        ]
+      }
+    });
+  }
+
+  private async handleSlotsStep(chatId: number, telegramId: string, text: string, state: CampaignCreationState) {
+    const slots = parseInt(text);
+    if (isNaN(slots) || slots <= 0) {
+      this.bot.sendMessage(chatId, '❌ Please enter a valid number greater than 0 (e.g., 100)');
+      return;
+    }
+
+    state.slots = slots;
+    state.step = 'url';
+    campaignCreationStates.set(telegramId, state);
+
+    const platformEmoji = {
+      'twitter': '🐦',
+      'tiktok': '📱',
+      'facebook': '📘',
+      'telegram': '💬'
+    }[state.platform!] || '🎯';
+
+    const urlExamples = {
+      'twitter': 'https://twitter.com/username/status/123456789',
+      'tiktok': 'https://tiktok.com/@username/video/123456789',
+      'facebook': 'https://facebook.com/username/posts/123456789',
+      'telegram': 'https://t.me/channelname'
+    }[state.platform!] || 'https://example.com/your-content';
+
+    this.bot.sendMessage(chatId, `
+${platformEmoji} Creating ${state.platform!.toUpperCase()} Campaign
+
+🔗 **Step 6: Content URL**
+
+Please provide the link to your ${state.platform} content that users need to interact with.
+
+💡 **Example for ${state.platform}:**
+${urlExamples}
+
+Paste your ${state.platform} URL here:
+    `, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Back to Participants', callback_data: 'back_to_slots' }],
+          [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }]
+        ]
+      }
+    });
+  }
+
+  private async handleUrlStep(chatId: number, telegramId: string, text: string, state: CampaignCreationState) {
+    if (!text.startsWith('http')) {
+      this.bot.sendMessage(chatId, '❌ Please provide a valid URL starting with http:// or https://');
+      return;
+    }
+
+    state.url = text.trim();
+    state.step = 'confirm';
+    campaignCreationStates.set(telegramId, state);
+
+    const totalCost = state.reward! * state.slots!;
+    const platformEmoji = {
+      'twitter': '🐦',
+      'tiktok': '📱',
+      'facebook': '📘',
+      'telegram': '💬'
+    }[state.platform!] || '🎯';
+
+    this.bot.sendMessage(chatId, `
+${platformEmoji} **Campaign Summary**
+
+📝 **Title:** ${state.title}
+📄 **Description:** ${state.description || 'No description'}
+🎪 **Platform:** ${state.platform!.toUpperCase()}
+💰 **Reward:** ${state.reward} USDT per task
+👥 **Participants:** ${state.slots} people
+🔗 **URL:** ${state.url}
+
+💸 **Total Cost:** ${totalCost} USDT
+
+Are you sure you want to create this campaign?
+    `, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '✅ Create Campaign', callback_data: 'confirm_campaign_creation' }],
+          [{ text: '🔙 Back to URL', callback_data: 'back_to_url' }],
+          [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }]
+        ]
+      }
+    });
+  }
+
+  private async handleConfirmStep(chatId: number, telegramId: string, text: string, state: CampaignCreationState, user: any) {
+    // This step is handled by callback query, not text input
+    this.bot.sendMessage(chatId, '❌ Please use the buttons to confirm or cancel the campaign creation.');
+  }
+
+  private async finalizeCampaignCreation(chatId: number, telegramId: string) {
+    try {
+      const state = campaignCreationStates.get(telegramId);
+      const user = await storage.getUserByTelegramId(telegramId);
+
+      if (!state || !user) {
+        this.bot.sendMessage(chatId, '❌ Campaign creation session expired. Please start again.');
+        campaignCreationStates.delete(telegramId);
+        return;
       }
 
       // Calculate total campaign cost
-      const totalCost = rewardAmount * totalSlots;
+      const totalCost = state.reward! * state.slots!;
       const userBalance = parseFloat(user.balance);
 
       if (userBalance < totalCost) {
@@ -613,24 +843,25 @@ URL: https://twitter.com/username/status/123
 ❌ Insufficient Balance
 
 💰 Your balance: ${userBalance} USDT
-💸 Campaign cost: ${totalCost} USDT (${rewardAmount} × ${totalSlots})
+💸 Campaign cost: ${totalCost} USDT (${state.reward} × ${state.slots})
 📊 Need: ${(totalCost - userBalance).toFixed(2)} USDT more
 
 Please fund your account first using "💰 Fund Account"
         `);
+        campaignCreationStates.delete(telegramId);
         return;
       }
 
       // Create the campaign
       const campaign = await storage.createCampaign({
         creatorId: user.id,
-        title,
-        description,
-        platform,
-        rewardAmount: rewardAmount.toString(),
-        totalSlots,
-        availableSlots: totalSlots,
-        taskUrl,
+        title: state.title!,
+        description: state.description || '',
+        platform: state.platform!,
+        rewardAmount: state.reward!.toString(),
+        totalSlots: state.slots!,
+        availableSlots: state.slots!,
+        taskUrl: state.url!,
         status: 'active'
       });
 
@@ -644,18 +875,28 @@ Please fund your account first using "💰 Fund Account"
         type: 'campaign_funding',
         amount: totalCost.toString(),
         status: 'completed',
-        description: `Campaign funding: ${title}`
+        description: `Campaign funding: ${state.title}`
       });
+
+      // Clear the creation state
+      campaignCreationStates.delete(telegramId);
+
+      const platformEmoji = {
+        'twitter': '🐦',
+        'tiktok': '📱',
+        'facebook': '📘',
+        'telegram': '💬'
+      }[state.platform!] || '🎯';
 
       this.bot.sendMessage(chatId, `
 ✅ Campaign Created Successfully!
 
-🎯 **${title}**
-📝 ${description}
-🎪 Platform: ${platform.toUpperCase()}
-💰 Reward: ${rewardAmount} USDT per task
-👥 Slots: ${totalSlots} people needed
-🔗 URL: ${taskUrl}
+${platformEmoji} **${state.title}**
+📝 ${state.description || 'No description'}
+🎪 Platform: ${state.platform!.toUpperCase()}
+💰 Reward: ${state.reward} USDT per task
+👥 Slots: ${state.slots} people needed
+🔗 URL: ${state.url}
 
 💸 **Payment Details:**
 • Total cost: ${totalCost} USDT
@@ -672,8 +913,9 @@ Please fund your account first using "💰 Fund Account"
       });
 
     } catch (error) {
-      console.error('Error in parseCampaignCreation:', error);
+      console.error('Error in finalizeCampaignCreation:', error);
       this.bot.sendMessage(chatId, '❌ Error creating campaign. Please try again.');
+      campaignCreationStates.delete(telegramId);
     }
   }
 
@@ -790,6 +1032,79 @@ Copy the template above and send it to our support team for faster assistance.
       if (data.startsWith('create_platform_')) {
         const platform = data.replace('create_platform_', '');
         await this.handlePlatformCampaignCreation(msg.chat.id, telegramId, platform);
+      }
+
+      // Campaign creation conversation callbacks
+      if (data === 'cancel_campaign_creation') {
+        campaignCreationStates.delete(telegramId);
+        this.bot.editMessageText('❌ Campaign creation cancelled.', {
+          chat_id: msg.chat.id,
+          message_id: msg.message_id
+        });
+      }
+
+      if (data === 'skip_description') {
+        await this.handleDescriptionStep(msg.chat.id, telegramId, 'skip', campaignCreationStates.get(telegramId)!);
+      }
+
+      if (data.startsWith('reward_')) {
+        const amount = data.replace('reward_', '');
+        await this.handleRewardStep(msg.chat.id, telegramId, amount, campaignCreationStates.get(telegramId)!);
+      }
+
+      if (data.startsWith('slots_')) {
+        const slots = data.replace('slots_', '');
+        await this.handleSlotsStep(msg.chat.id, telegramId, slots, campaignCreationStates.get(telegramId)!);
+      }
+
+      if (data === 'confirm_campaign_creation') {
+        await this.finalizeCampaignCreation(msg.chat.id, telegramId);
+      }
+
+      // Back navigation handlers
+      if (data === 'back_to_title') {
+        const state = campaignCreationStates.get(telegramId);
+        if (state) {
+          state.step = 'title';
+          campaignCreationStates.set(telegramId, state);
+          await this.handlePlatformCampaignCreation(msg.chat.id, telegramId, state.platform!);
+        }
+      }
+
+      if (data === 'back_to_description') {
+        const state = campaignCreationStates.get(telegramId);
+        if (state) {
+          state.step = 'description';
+          campaignCreationStates.set(telegramId, state);
+          await this.handleTitleStep(msg.chat.id, telegramId, state.title!, state);
+        }
+      }
+
+      if (data === 'back_to_reward') {
+        const state = campaignCreationStates.get(telegramId);
+        if (state) {
+          state.step = 'reward';
+          campaignCreationStates.set(telegramId, state);
+          await this.handleDescriptionStep(msg.chat.id, telegramId, state.description || 'skip', state);
+        }
+      }
+
+      if (data === 'back_to_slots') {
+        const state = campaignCreationStates.get(telegramId);
+        if (state) {
+          state.step = 'slots';
+          campaignCreationStates.set(telegramId, state);
+          await this.handleRewardStep(msg.chat.id, telegramId, state.reward!.toString(), state);
+        }
+      }
+
+      if (data === 'back_to_url') {
+        const state = campaignCreationStates.get(telegramId);
+        if (state) {
+          state.step = 'url';
+          campaignCreationStates.set(telegramId, state);
+          await this.handleSlotsStep(msg.chat.id, telegramId, state.slots!.toString(), state);
+        }
       }
       
       if (data.startsWith('platform_')) {
