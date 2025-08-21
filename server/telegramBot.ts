@@ -7,13 +7,14 @@ const ESCROW_WALLET = "EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv";
 
 // Campaign creation state management
 interface CampaignCreationState {
-  step: 'platform' | 'title' | 'description' | 'reward' | 'slots' | 'url' | 'proofType' | 'confirm';
+  step: 'platform' | 'title' | 'description' | 'reward' | 'slots' | 'url' | 'duration' | 'proofType' | 'confirm';
   platform?: string;
   title?: string;
   description?: string;
   reward?: number;
   slots?: number;
   url?: string;
+  duration?: number; // days
   proofType?: string;
 }
 
@@ -1025,6 +1026,9 @@ Please type your campaign title:
         case 'url':
           await this.handleUrlStep(chatId, telegramId, text, state);
           break;
+        case 'duration':
+          await this.handleDurationStep(chatId, telegramId, text, state);
+          break;
         case 'proofType':
           await this.handleProofTypeStep(chatId, telegramId, text, state);
           break;
@@ -1231,6 +1235,51 @@ Paste your ${state.platform} URL here:
     }
 
     state.url = text.trim();
+    state.step = 'duration';
+    campaignCreationStates.set(telegramId, state);
+
+    const platformEmoji = {
+      'twitter': '🐦',
+      'tiktok': '📱',
+      'facebook': '📘',
+      'telegram': '💬'
+    }[state.platform!] || '🎯';
+
+    this.bot.sendMessage(chatId, `
+${platformEmoji} Creating ${state.platform!.toUpperCase()} Campaign
+
+⏰ **Step 7: Campaign Duration**
+
+How many days should this campaign stay active?
+
+💡 **Recommendations:**
+• Short campaigns: 3-7 days (quick engagement)
+• Standard campaigns: 7-14 days (good participation)
+• Long campaigns: 14-30 days (maximum reach)
+
+⚠️ **Note:** Expired campaigns are automatically removed from the active list.
+
+Please enter the number of days (1-30):
+    `, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '⏰ 3 days', callback_data: 'duration_3' }, { text: '⏰ 7 days', callback_data: 'duration_7' }],
+          [{ text: '⏰ 14 days', callback_data: 'duration_14' }, { text: '⏰ 30 days', callback_data: 'duration_30' }],
+          [{ text: '🔙 Back to URL', callback_data: 'back_to_url' }],
+          [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }]
+        ]
+      }
+    });
+  }
+
+  private async handleDurationStep(chatId: number, telegramId: string, text: string, state: CampaignCreationState) {
+    const duration = parseInt(text);
+    if (isNaN(duration) || duration <= 0 || duration > 30) {
+      this.bot.sendMessage(chatId, '❌ Please enter a valid number between 1 and 30 days.');
+      return;
+    }
+
+    state.duration = duration;
     state.step = 'proofType';
     campaignCreationStates.set(telegramId, state);
 
@@ -1244,7 +1293,7 @@ Paste your ${state.platform} URL here:
     this.bot.sendMessage(chatId, `
 ${platformEmoji} Creating ${state.platform!.toUpperCase()} Campaign
 
-📸 **Step 7: Proof Type**
+📸 **Step 8: Proof Type**
 
 What type of proof should users submit when they complete tasks?
 
@@ -1262,7 +1311,7 @@ Choose the proof type that works best for your campaign:
         inline_keyboard: [
           [{ text: '📸 Image/Screenshot', callback_data: 'prooftype_image' }],
           [{ text: '🔗 Link/Profile URL', callback_data: 'prooftype_link' }],
-          [{ text: '🔙 Back to URL', callback_data: 'back_to_url' }],
+          [{ text: '🔙 Back to Duration', callback_data: 'back_to_duration' }],
           [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }]
         ]
       }
@@ -1292,6 +1341,9 @@ Choose the proof type that works best for your campaign:
       ? 'Users will submit screenshots showing task completion'
       : 'Users will submit profile links or task URLs as proof';
 
+    const expirationDate = new Date();
+    expirationDate.setDate(expirationDate.getDate() + state.duration!);
+    
     this.bot.sendMessage(chatId, `
 ${platformEmoji} **Campaign Summary**
 
@@ -1301,6 +1353,7 @@ ${platformEmoji} **Campaign Summary**
 💰 **Reward:** ${state.reward} USDT per task
 👥 **Participants:** ${state.slots} people
 🔗 **URL:** ${state.url}
+⏰ **Duration:** ${state.duration} days (expires ${expirationDate.toLocaleDateString()})
 📋 **Proof Type:** ${proofTypeText}
 📌 **Proof Info:** ${proofDescription}
 
@@ -1353,6 +1406,10 @@ Please fund your account first using "💰 Fund Account"
       }
 
       // Create the campaign
+      // Calculate expiration date
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + (state.duration || 7)); // Default to 7 days if not specified
+
       const campaign = await storage.createCampaign({
         creatorId: user.id,
         title: state.title!,
@@ -1366,7 +1423,8 @@ Please fund your account first using "💰 Fund Account"
         escrowAmount: totalCost.toString(),
         fee: "0", // No additional fee for basic campaigns
         status: 'active',
-        proofType: state.proofType || 'image' // Default to image if not specified
+        proofType: state.proofType || 'image', // Default to image if not specified
+        expiresAt: expiresAt
       });
 
       // Deduct the cost from user balance
@@ -1608,6 +1666,11 @@ Please check:
       if (data.startsWith('slots_')) {
         const slots = data.replace('slots_', '');
         await this.handleSlotsStep(msg.chat.id, telegramId, slots, campaignCreationStates.get(telegramId)!);
+      }
+
+      if (data.startsWith('duration_')) {
+        const duration = data.replace('duration_', '');
+        await this.handleDurationStep(msg.chat.id, telegramId, duration, campaignCreationStates.get(telegramId)!);
       }
 
       if (data.startsWith('prooftype_')) {

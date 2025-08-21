@@ -100,10 +100,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCampaigns(platform?: string): Promise<Campaign[]> {
+    const now = new Date();
+    
     if (platform && platform !== 'all') {
-      return db.select().from(campaigns).where(eq(campaigns.platform, platform));
+      return db.select().from(campaigns)
+        .where(and(
+          eq(campaigns.platform, platform),
+          sql`${campaigns.expiresAt} > ${now}`
+        ))
+        .orderBy(desc(campaigns.createdAt));
     }
-    return db.select().from(campaigns).orderBy(desc(campaigns.createdAt));
+    
+    return db.select().from(campaigns)
+      .where(sql`${campaigns.expiresAt} > ${now}`)
+      .orderBy(desc(campaigns.createdAt));
   }
 
   async getCampaign(id: string): Promise<Campaign | undefined> {
@@ -161,7 +171,7 @@ export class DatabaseStorage implements IStorage {
   async createTaskSubmission(insertSubmission: InsertTaskSubmission): Promise<TaskSubmission> {
     const [submission] = await db
       .insert(taskSubmissions)
-      .values(insertSubmission)
+      .values([insertSubmission])
       .returning();
     return submission;
   }
