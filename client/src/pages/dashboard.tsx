@@ -8,12 +8,14 @@ import TaskCard from "@/components/TaskCard";
 import CampaignForm from "@/components/CampaignForm";
 import WithdrawalForm from "@/components/WithdrawalForm";
 import TaskSubmissionModal from "@/components/TaskSubmissionModal";
+import AdminBalanceModal from "@/components/AdminBalanceModal";
 import { User, Wallet, Trophy, CheckCircle, Search, Plus, Filter, Settings } from "lucide-react";
 import type { Campaign, User as UserType, Transaction } from "@shared/schema";
 
 export default function Dashboard() {
   const [selectedTask, setSelectedTask] = useState<Campaign | null>(null);
   const [platformFilter, setPlatformFilter] = useState("all");
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [userId] = useState("5154336054"); // Real Telegram ID - permanent and unique
 
   // Fetch user data
@@ -22,7 +24,7 @@ export default function Dashboard() {
     enabled: !!userId,
   });
 
-  // Debug logging
+  // Debug logging - Remove after testing
   useEffect(() => {
     if (user) {
       console.log("User data:", user);
@@ -78,12 +80,10 @@ export default function Dashboard() {
             </div>
             <div className="flex items-center space-x-4">
               {user?.telegramId === "5154336054" && (
-                <a href="/admin" className="text-slate-600 hover:text-telegram-blue transition-colors">
-                  <Button variant="default" size="sm" className="bg-red-600 hover:bg-red-700">
-                    <Settings className="w-4 h-4 mr-2" />
-                    ADMIN ACCESS
-                  </Button>
-                </a>
+                <Button variant="default" size="sm" className="bg-red-600 hover:bg-red-700" onClick={() => setShowAdminPanel(true)}>
+                  <Settings className="w-4 h-4 mr-2" />
+                  BALANCE ADMIN
+                </Button>
               )}
               <div className="hidden sm:flex items-center space-x-2 bg-slate-100 rounded-lg px-3 py-2">
                 <Wallet className="w-4 h-4 text-telegram-blue" />
@@ -307,6 +307,13 @@ export default function Dashboard() {
           onClose={() => setSelectedTask(null)}
         />
       )}
+
+      {/* Admin Balance Management Modal */}
+      <AdminBalanceModal 
+        isOpen={showAdminPanel} 
+        onClose={() => setShowAdminPanel(false)} 
+        userId={userId}
+      />
     </div>
   );
 }
