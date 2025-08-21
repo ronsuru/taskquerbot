@@ -125,52 +125,86 @@ export class TonService {
         return { valid: false };
       }
 
-      // For USDT transactions, we need to check jetton wallet address
-      let escrowDestination = ESCROW_WALLET;
-      let jettonWallet: string | null = null;
+      // For USDT transactions, we need to analyze jetton transfer messages
       const escrowWalletRaw = "0:54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"; // Raw format
       
       if (isUSDT) {
-        console.log('[USDT] Getting jetton wallet address for escrow wallet...');
-        jettonWallet = await this.getJettonWalletAddress(ESCROW_WALLET, USDT_MASTER);
-        if (jettonWallet) {
-          escrowDestination = jettonWallet;
-          console.log(`[USDT] Using jetton wallet address: ${jettonWallet}`);
-        } else {
-          console.log('[USDT] Could not get jetton wallet, falling back to main wallet');
+        console.log('[USDT] Analyzing jetton transfer messages...');
+        
+        // For jetton transfers, we need to check if there's a jetton transfer operation
+        // that ultimately sends USDT to our escrow wallet
+        let foundUSDTTransfer = false;
+        let transferAmount = "0";
+        
+        // Look through all messages for jetton transfers
+        for (const msg of data.out_msgs) {
+          console.log(`[USDT] Checking message:`, JSON.stringify(msg, null, 2));
+          
+          // Check if this message has decoded body with jetton transfer info
+          if (msg.decoded_body) {
+            const decoded = msg.decoded_body;
+            console.log(`[USDT] Decoded body:`, JSON.stringify(decoded, null, 2));
+            
+            // Check for jetton transfer operations
+            if (decoded.type === 'jetton-transfer' || decoded.operation === 'JettonTransfer') {
+              const transferDest = decoded.destination || decoded.to;
+              console.log(`[USDT] Found jetton transfer to: ${transferDest}`);
+              
+              // Check if transfer destination matches our escrow wallet
+              if (transferDest === ESCROW_WALLET || transferDest === escrowWalletRaw ||
+                  (transferDest && transferDest.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"))) {
+                foundUSDTTransfer = true;
+                transferAmount = decoded.amount || decoded.jetton_amount || "0";
+                console.log(`[USDT] ✅ Valid USDT transfer found! Amount: ${transferAmount}`);
+                break;
+              }
+            }
+          }
+          
+          // Also check raw message body for jetton transfer patterns
+          if (msg.raw_body && msg.destination) {
+            // Check if destination involves our escrow wallet in the message chain
+            const destination = msg.destination?.address;
+            console.log(`[USDT] Raw message destination: ${destination}`);
+          }
         }
+        
+        if (!foundUSDTTransfer) {
+          console.log('[USDT] ❌ No valid USDT transfer to escrow wallet found');
+          return { valid: false };
+        }
+        
+        // For USDT transfers, use the jetton amount from decoded body
+        return {
+          valid: true,
+          amount: transferAmount ? (parseInt(transferAmount) / 1000000).toString() : "0",
+          sender: data.account?.address,
+          recipient: ESCROW_WALLET,
+        };
       }
       
+      // TON transfer logic (existing)
       const isToEscrow = data.out_msgs.some((msg: any) => {
         const destination = msg.destination?.address;
-        console.log(`[${isUSDT ? 'USDT' : 'TON'}] Checking destination: ${destination} vs escrow: ${escrowDestination}`);
+        console.log(`[TON] Checking destination: ${destination} vs escrow: ${ESCROW_WALLET}`);
         
-        if (isUSDT && jettonWallet) {
-          // For USDT, check jetton wallet address
-          return destination === jettonWallet;
-        } else {
-          // For TON, check both user-friendly and raw format
-          return destination === ESCROW_WALLET || 
-                 destination === escrowWalletRaw ||
-                 (destination && destination.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"));
-        }
+        // For TON, check both user-friendly and raw format
+        return destination === ESCROW_WALLET || 
+               destination === escrowWalletRaw ||
+               (destination && destination.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"));
       });
 
       if (!isToEscrow) {
-        console.log(`[${isUSDT ? 'USDT' : 'TON'}] Transaction not sent to escrow wallet`);
+        console.log(`[TON] Transaction not sent to escrow wallet`);
         return { valid: false };
       }
 
-      // Get the message sent to escrow
+      // Get the message sent to escrow (for TON)
       const escrowMsg = data.out_msgs.find((msg: any) => {
         const destination = msg.destination?.address;
-        if (isUSDT && jettonWallet) {
-          return destination === jettonWallet;
-        } else {
-          return destination === ESCROW_WALLET || 
-                 destination === escrowWalletRaw ||
-                 (destination && destination.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"));
-        }
+        return destination === ESCROW_WALLET || 
+               destination === escrowWalletRaw ||
+               (destination && destination.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"));
       });
 
       const amount = escrowMsg?.value;
