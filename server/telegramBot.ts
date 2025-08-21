@@ -25,6 +25,7 @@ const awaitingWithdrawalAmount = new Map<string, string>(); // telegramId -> use
 
 // Admin settings state management
 const awaitingSettingChange = new Map<string, string>(); // telegramId -> settingKey
+const awaitingUserLookup = new Map<string, boolean>(); // telegramId -> boolean
 
 export class TaskBot {
   private bot: TelegramBot;
@@ -154,6 +155,13 @@ Use /menu to see all available commands.
         await this.handleAdminSettingChange(chatId, telegramId, awaitingSetting, text);
         return;
       }
+
+      // Check if admin is entering a user lookup Telegram ID
+      if (awaitingUserLookup.has(telegramId) && text && /^\d{8,12}$/.test(text)) {
+        awaitingUserLookup.delete(telegramId);
+        await this.showUserAccountInfo(chatId, telegramId, text);
+        return;
+      }
     });
 
     // Handle transaction hash verification
@@ -272,6 +280,7 @@ Choose an admin function:
           inline_keyboard: [
             [{ text: '💰 Balance Management', callback_data: 'admin_balance_menu' }],
             [{ text: '📋 Task Management', callback_data: 'admin_task_menu' }],
+            [{ text: '🔍 User Lookup', callback_data: 'admin_user_lookup' }],
             [{ text: '⚙️ Advanced Settings', callback_data: 'admin_settings_menu' }],
             [{ text: '📊 System Information', callback_data: 'admin_system_info' }],
             [{ text: '❌ Close Admin Panel', callback_data: 'close_admin_panel' }]
@@ -293,6 +302,7 @@ Choose an admin function:
           inline_keyboard: [
             [{ text: '💰 Balance Management', callback_data: 'admin_balance_menu' }],
             [{ text: '📋 Task Management', callback_data: 'admin_task_menu' }],
+            [{ text: '🔍 User Lookup', callback_data: 'admin_user_lookup' }],
             [{ text: '⚙️ Advanced Settings', callback_data: 'admin_settings_menu' }],
             [{ text: '📊 System Information', callback_data: 'admin_system_info' }],
             [{ text: '❌ Close Admin Panel', callback_data: 'close_admin_panel' }]
@@ -576,6 +586,90 @@ System uptime: ${process.uptime().toFixed(0)} seconds
     } catch (error) {
       console.error('Error loading system info:', error);
       this.bot.sendMessage(chatId, '❌ Error loading system information. Please try again.');
+    }
+  }
+
+  private async showUserLookupPrompt(chatId: number, telegramId: string) {
+    const message = `
+🔍 User Account Lookup
+
+Enter the Telegram ID of the user you want to lookup:
+
+Example: 1234567890
+
+This will show their account balance, transaction history, and verification status.
+    `;
+
+    awaitingUserLookup.set(telegramId, true);
+    this.bot.sendMessage(chatId, message, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '❌ Cancel', callback_data: 'admin_panel' }]
+        ]
+      }
+    });
+  }
+
+  private async showUserAccountInfo(chatId: number, adminTelegramId: string, targetTelegramId: string) {
+    try {
+      const user = await storage.getUserByTelegramId(targetTelegramId);
+      if (!user) {
+        this.bot.sendMessage(chatId, `❌ User with Telegram ID ${targetTelegramId} not found.`);
+        return;
+      }
+
+      // Get user transactions
+      const transactions = await storage.getUserTransactions(user.id);
+      const deposits = transactions.filter(t => t.type === 'deposit');
+      const totalDeposited = deposits.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+      const depositCount = deposits.length;
+
+      // Get user campaigns and submissions
+      const campaigns = await storage.getUserCampaigns(user.id);
+      const submissions = await storage.getUserSubmissions(user.id);
+
+      const accountMessage = `
+🔍 User Account Information
+
+👤 **User Details:**
+• Telegram ID: [${targetTelegramId}](tg://user?id=${targetTelegramId})
+• Wallet: [${user.walletAddress}](https://tonviewer.com/${user.walletAddress})
+• Admin Status: ${user.isAdmin ? '✅ Yes' : '❌ No'}
+• Registration: ${new Date(user.createdAt).toLocaleString()}
+
+💰 **Account Balance:**
+• Current Balance: ${user.balance} USDT
+• Total Rewards: ${user.rewards} USDT
+• Tasks Completed: ${user.completedTasks}
+
+💳 **Deposit History:**
+• Total Deposited: ${totalDeposited.toFixed(8)} USDT
+• Deposit Count: ${depositCount} transactions
+
+📋 **Activity Summary:**
+• Campaigns Created: ${campaigns.length}
+• Task Submissions: ${submissions.length}
+• Account Status: Active
+
+**Recent Transactions (Last 5):**
+${transactions.slice(0, 5).map((t, i) => 
+  `${i + 1}. ${t.type.toUpperCase()} - ${t.amount} USDT (${new Date(t.createdAt).toLocaleDateString()})`
+).join('\n') || 'No transactions found'}
+      `;
+
+      this.bot.sendMessage(chatId, accountMessage, {
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔍 Lookup Another User', callback_data: 'admin_user_lookup' }],
+            [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error loading user account info:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading user information. Please try again.');
     }
   }
 
@@ -2024,6 +2118,14 @@ Please check:
       if (data === 'admin_system_info') {
         if (this.isAdmin(telegramId)) {
           await this.showSystemInfo(msg.chat.id, telegramId);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      if (data === 'admin_user_lookup') {
+        if (this.isAdmin(telegramId)) {
+          await this.showUserLookupPrompt(msg.chat.id, telegramId);
         } else {
           this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
         }
