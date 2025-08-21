@@ -87,6 +87,15 @@ Use /menu to see all available commands.
       }
     });
 
+    // Handle campaign creation messages
+    this.bot.onText(/^Title:/i, async (msg) => {
+      const chatId = msg.chat.id;
+      const telegramId = msg.from?.id.toString() || '';
+      const text = msg.text || '';
+
+      await this.parseCampaignCreation(chatId, telegramId, text);
+    });
+
     // Handle transaction hash verification
     this.bot.onText(/^[a-fA-F0-9]{64}$/, async (msg, match) => {
       const chatId = msg.chat.id;
@@ -382,6 +391,292 @@ Would you like to create a new campaign?
     }
   }
 
+  private async handleCreateCampaign(chatId: number, telegramId: string) {
+    try {
+      const user = await storage.getUserByTelegramId(telegramId);
+      
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ Please create an account first using "👤 Create Account"');
+        return;
+      }
+
+      const createMessage = `
+🎯 Create New Campaign
+
+📝 Platform Selection:
+Choose which platform you want to create a campaign for:
+
+🐦 Twitter - Posts, retweets, likes
+📱 TikTok - Videos, comments, follows
+📘 Facebook - Posts, shares, likes
+💬 Telegram - Channel joins, shares
+
+Select a platform to continue:
+      `;
+
+      this.bot.sendMessage(chatId, createMessage, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🐦 Twitter', callback_data: 'create_platform_twitter' }],
+            [{ text: '📱 TikTok', callback_data: 'create_platform_tiktok' }],
+            [{ text: '📘 Facebook', callback_data: 'create_platform_facebook' }],
+            [{ text: '💬 Telegram', callback_data: 'create_platform_telegram' }],
+            [{ text: '🔙 Back to My Campaigns', callback_data: 'back_to_campaigns' }]
+          ]
+        }
+      });
+
+    } catch (error) {
+      console.error('Error in handleCreateCampaign:', error);
+      this.bot.sendMessage(chatId, '❌ Error starting campaign creation. Please try again.');
+    }
+  }
+
+  private async handleViewMyCampaigns(chatId: number, telegramId: string) {
+    try {
+      const user = await storage.getUserByTelegramId(telegramId);
+      
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ Please create an account first using "👤 Create Account"');
+        return;
+      }
+
+      const userCampaigns = await storage.getUserCampaigns(user.id);
+      
+      if (userCampaigns.length === 0) {
+        this.bot.sendMessage(chatId, `
+📊 My Campaigns
+
+You haven't created any campaigns yet. Click "✨ Create New Campaign" to get started!
+
+💡 Tips for successful campaigns:
+• Offer competitive rewards
+• Write clear task descriptions
+• Choose the right platform for your audience
+        `, {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '✨ Create New Campaign', callback_data: 'create_campaign' }]
+            ]
+          }
+        });
+        return;
+      }
+
+      let campaignList = `📊 My Campaigns (${userCampaigns.length} total):\n\n`;
+      
+      userCampaigns.slice(0, 5).forEach((campaign, index) => {
+        const progress = ((campaign.totalSlots - campaign.availableSlots) / campaign.totalSlots) * 100;
+        campaignList += `${index + 1}. ${campaign.title}\n`;
+        campaignList += `🎯 Platform: ${campaign.platform}\n`;
+        campaignList += `💰 Reward: ${campaign.rewardAmount} USDT per task\n`;
+        campaignList += `📊 Progress: ${campaign.totalSlots - campaign.availableSlots}/${campaign.totalSlots} completed (${progress.toFixed(1)}%)\n`;
+        campaignList += `📈 Status: ${campaign.status}\n\n`;
+      });
+
+      if (userCampaigns.length > 5) {
+        campaignList += `... and ${userCampaigns.length - 5} more campaigns\n\n`;
+      }
+
+      this.bot.sendMessage(chatId, campaignList, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '✨ Create New Campaign', callback_data: 'create_campaign' }],
+            [{ text: '🔄 Refresh List', callback_data: 'view_my_campaigns' }]
+          ]
+        }
+      });
+
+    } catch (error) {
+      console.error('Error in handleViewMyCampaigns:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading your campaigns. Please try again.');
+    }
+  }
+
+  private async handlePlatformCampaignCreation(chatId: number, telegramId: string, platform: string) {
+    try {
+      const user = await storage.getUserByTelegramId(telegramId);
+      
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ Please create an account first using "👤 Create Account"');
+        return;
+      }
+
+      const platformEmoji = {
+        'twitter': '🐦',
+        'tiktok': '📱',
+        'facebook': '📘',
+        'telegram': '💬'
+      }[platform] || '🎯';
+
+      const instructionMessage = `
+${platformEmoji} Creating ${platform.toUpperCase()} Campaign
+
+📝 Campaign Setup Instructions:
+
+Please send the following information in this format:
+
+**Title:** Your campaign title
+**Description:** What users need to do
+**Reward:** Amount in USDT per task (e.g., 0.5)
+**Slots:** Number of people needed (e.g., 100)
+**URL:** Link to your ${platform} content
+
+💡 Example:
+Title: Like my Twitter post
+Description: Like and retweet my latest post about crypto
+Reward: 0.25
+Slots: 500
+URL: https://twitter.com/username/status/123456789
+
+Send all information in your next message to create the campaign!
+      `;
+
+      this.bot.sendMessage(chatId, instructionMessage, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Back to Platform Selection', callback_data: 'create_campaign' }]
+          ]
+        }
+      });
+
+      // Store the platform selection in a temporary state
+      // Note: In a real implementation, you'd want to use a proper state management system
+      // For now, we'll rely on the user sending the properly formatted message
+
+    } catch (error) {
+      console.error('Error in handlePlatformCampaignCreation:', error);
+      this.bot.sendMessage(chatId, '❌ Error setting up campaign creation. Please try again.');
+    }
+  }
+
+  private async parseCampaignCreation(chatId: number, telegramId: string, text: string) {
+    try {
+      const user = await storage.getUserByTelegramId(telegramId);
+      
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ Please create an account first using "👤 Create Account"');
+        return;
+      }
+
+      // Parse the campaign details
+      const titleMatch = text.match(/Title:\s*(.+)/i);
+      const descriptionMatch = text.match(/Description:\s*(.+)/i);
+      const rewardMatch = text.match(/Reward:\s*([0-9.]+)/i);
+      const slotsMatch = text.match(/Slots:\s*([0-9]+)/i);
+      const urlMatch = text.match(/URL:\s*(https?:\/\/\S+)/i);
+
+      if (!titleMatch || !descriptionMatch || !rewardMatch || !slotsMatch || !urlMatch) {
+        this.bot.sendMessage(chatId, `
+❌ Invalid format! Please include all required fields:
+
+**Title:** Your campaign title
+**Description:** What users need to do
+**Reward:** Amount in USDT per task
+**Slots:** Number of people needed
+**URL:** Link to your content
+
+Example:
+Title: Like my Twitter post
+Description: Like and retweet my latest post
+Reward: 0.25
+Slots: 100
+URL: https://twitter.com/username/status/123
+        `);
+        return;
+      }
+
+      const title = titleMatch[1].trim();
+      const description = descriptionMatch[1].trim();
+      const rewardAmount = parseFloat(rewardMatch[1]);
+      const totalSlots = parseInt(slotsMatch[1]);
+      const taskUrl = urlMatch[1].trim();
+
+      // Determine platform from URL
+      let platform = 'other';
+      if (taskUrl.includes('twitter.com') || taskUrl.includes('x.com')) {
+        platform = 'twitter';
+      } else if (taskUrl.includes('tiktok.com')) {
+        platform = 'tiktok';
+      } else if (taskUrl.includes('facebook.com')) {
+        platform = 'facebook';
+      } else if (taskUrl.includes('t.me')) {
+        platform = 'telegram';
+      }
+
+      // Calculate total campaign cost
+      const totalCost = rewardAmount * totalSlots;
+      const userBalance = parseFloat(user.balance);
+
+      if (userBalance < totalCost) {
+        this.bot.sendMessage(chatId, `
+❌ Insufficient Balance
+
+💰 Your balance: ${userBalance} USDT
+💸 Campaign cost: ${totalCost} USDT (${rewardAmount} × ${totalSlots})
+📊 Need: ${(totalCost - userBalance).toFixed(2)} USDT more
+
+Please fund your account first using "💰 Fund Account"
+        `);
+        return;
+      }
+
+      // Create the campaign
+      const campaign = await storage.createCampaign({
+        creatorId: user.id,
+        title,
+        description,
+        platform,
+        rewardAmount: rewardAmount.toString(),
+        totalSlots,
+        availableSlots: totalSlots,
+        taskUrl,
+        status: 'active'
+      });
+
+      // Deduct the cost from user balance
+      const newBalance = userBalance - totalCost;
+      await storage.updateUserBalance(user.id, newBalance.toString());
+
+      // Create transaction record
+      await storage.createTransaction({
+        userId: user.id,
+        type: 'campaign_funding',
+        amount: totalCost.toString(),
+        status: 'completed',
+        description: `Campaign funding: ${title}`
+      });
+
+      this.bot.sendMessage(chatId, `
+✅ Campaign Created Successfully!
+
+🎯 **${title}**
+📝 ${description}
+🎪 Platform: ${platform.toUpperCase()}
+💰 Reward: ${rewardAmount} USDT per task
+👥 Slots: ${totalSlots} people needed
+🔗 URL: ${taskUrl}
+
+💸 **Payment Details:**
+• Total cost: ${totalCost} USDT
+• Remaining balance: ${newBalance.toFixed(2)} USDT
+
+🚀 Your campaign is now live and available to users!
+      `, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📊 View My Campaigns', callback_data: 'view_my_campaigns' }],
+            [{ text: '✨ Create Another Campaign', callback_data: 'create_campaign' }]
+          ]
+        }
+      });
+
+    } catch (error) {
+      console.error('Error in parseCampaignCreation:', error);
+      this.bot.sendMessage(chatId, '❌ Error creating campaign. Please try again.');
+    }
+  }
+
   private async handleWithdrawFunds(chatId: number, telegramId: string) {
     try {
       const user = await storage.getUserByTelegramId(telegramId);
@@ -478,6 +773,23 @@ Copy the template above and send it to our support team for faster assistance.
           chat_id: msg.chat.id,
           message_id: msg.message_id
         });
+      }
+
+      if (data === 'create_campaign') {
+        await this.handleCreateCampaign(msg.chat.id, telegramId);
+      }
+
+      if (data === 'view_my_campaigns') {
+        await this.handleViewMyCampaigns(msg.chat.id, telegramId);
+      }
+
+      if (data === 'back_to_campaigns') {
+        await this.handleMyCampaigns(msg.chat.id, telegramId);
+      }
+
+      if (data.startsWith('create_platform_')) {
+        const platform = data.replace('create_platform_', '');
+        await this.handlePlatformCampaignCreation(msg.chat.id, telegramId, platform);
       }
       
       if (data.startsWith('platform_')) {
