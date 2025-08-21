@@ -631,34 +631,33 @@ This will show their account balance, transaction history, and verification stat
       const accountMessage = `
 🔍 User Account Information
 
-👤 **User Details:**
-• Telegram ID: [${targetTelegramId}](tg://user?id=${targetTelegramId})
-• Wallet: [${user.walletAddress}](https://tonviewer.com/${user.walletAddress})
+👤 User Details:
+• Telegram ID: ${targetTelegramId}
+• Wallet: ${user.walletAddress}
 • Admin Status: ${user.isAdmin ? '✅ Yes' : '❌ No'}
 • Registration: ${new Date(user.createdAt).toLocaleString()}
 
-💰 **Account Balance:**
+💰 Account Balance:
 • Current Balance: ${user.balance} USDT
 • Total Rewards: ${user.rewards} USDT
 • Tasks Completed: ${user.completedTasks}
 
-💳 **Deposit History:**
+💳 Deposit History:
 • Total Deposited: ${totalDeposited.toFixed(8)} USDT
 • Deposit Count: ${depositCount} transactions
 
-📋 **Activity Summary:**
+📋 Activity Summary:
 • Campaigns Created: ${campaigns.length}
 • Task Submissions: ${submissions.length}
 • Account Status: Active
 
-**Recent Transactions (Last 5):**
+Recent Transactions (Last 5):
 ${transactions.slice(0, 5).map((t, i) => 
   `${i + 1}. ${t.type.toUpperCase()} - ${t.amount} USDT (${new Date(t.createdAt).toLocaleDateString()})`
 ).join('\n') || 'No transactions found'}
       `;
 
       this.bot.sendMessage(chatId, accountMessage, {
-        parse_mode: 'Markdown',
         disable_web_page_preview: true,
         reply_markup: {
           inline_keyboard: [
