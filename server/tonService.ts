@@ -92,7 +92,7 @@ export class TonService {
   }
 
   // Verify transaction hash using TonAPI
-  async verifyTransaction(hash: string): Promise<{
+  async verifyTransaction(hash: string, isUSDT: boolean = true): Promise<{
     valid: boolean;
     amount?: string;
     sender?: string;
@@ -125,30 +125,52 @@ export class TonService {
         return { valid: false };
       }
 
-      // Check if any message goes to escrow wallet
+      // For USDT transactions, we need to check jetton wallet address
+      let escrowDestination = ESCROW_WALLET;
+      let jettonWallet: string | null = null;
       const escrowWalletRaw = "0:54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"; // Raw format
+      
+      if (isUSDT) {
+        console.log('[USDT] Getting jetton wallet address for escrow wallet...');
+        jettonWallet = await this.getJettonWalletAddress(ESCROW_WALLET, USDT_MASTER);
+        if (jettonWallet) {
+          escrowDestination = jettonWallet;
+          console.log(`[USDT] Using jetton wallet address: ${jettonWallet}`);
+        } else {
+          console.log('[USDT] Could not get jetton wallet, falling back to main wallet');
+        }
+      }
       
       const isToEscrow = data.out_msgs.some((msg: any) => {
         const destination = msg.destination?.address;
-        console.log(`Checking destination: ${destination} vs escrow: ${ESCROW_WALLET}`);
+        console.log(`[${isUSDT ? 'USDT' : 'TON'}] Checking destination: ${destination} vs escrow: ${escrowDestination}`);
         
-        // Check both user-friendly and raw format
-        return destination === ESCROW_WALLET || 
-               destination === escrowWalletRaw ||
-               (destination && destination.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"));
+        if (isUSDT && jettonWallet) {
+          // For USDT, check jetton wallet address
+          return destination === jettonWallet;
+        } else {
+          // For TON, check both user-friendly and raw format
+          return destination === ESCROW_WALLET || 
+                 destination === escrowWalletRaw ||
+                 (destination && destination.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"));
+        }
       });
 
       if (!isToEscrow) {
-        console.log('Transaction not sent to escrow wallet');
+        console.log(`[${isUSDT ? 'USDT' : 'TON'}] Transaction not sent to escrow wallet`);
         return { valid: false };
       }
 
       // Get the message sent to escrow
       const escrowMsg = data.out_msgs.find((msg: any) => {
         const destination = msg.destination?.address;
-        return destination === ESCROW_WALLET || 
-               destination === escrowWalletRaw ||
-               (destination && destination.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"));
+        if (isUSDT && jettonWallet) {
+          return destination === jettonWallet;
+        } else {
+          return destination === ESCROW_WALLET || 
+                 destination === escrowWalletRaw ||
+                 (destination && destination.includes("54348a7bae4efaa9b80c3eaf2f956f1f178979e8872b3b0cc4a558c715fcd463"));
+        }
       });
 
       const amount = escrowMsg?.value;
@@ -167,11 +189,23 @@ export class TonService {
 
       console.log(`Amount: ${amount}, Sender: ${senderBounceable}`);
 
+      // Calculate amount based on currency type
+      let calculatedAmount = "0";
+      if (amount) {
+        if (isUSDT) {
+          // USDT has 6 decimals
+          calculatedAmount = (parseInt(amount) / 1000000).toString();
+        } else {
+          // TON has 9 decimals
+          calculatedAmount = (parseInt(amount) / 1000000000).toString();
+        }
+      }
+
       return {
         valid: true,
-        amount: amount ? (parseInt(amount) / 1000000000).toString() : "0",
+        amount: calculatedAmount,
         sender: senderBounceable,
-        recipient: ESCROW_WALLET,
+        recipient: escrowDestination,
       };
     } catch (error) {
       console.error('Error verifying transaction:', error);

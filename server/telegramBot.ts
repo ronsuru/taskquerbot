@@ -848,13 +848,13 @@ Your account is now active! You can start earning by completing tasks or create 
       const fundingMessage = `
 💰 Fund Your Account
 
-Send USDT (TRC-20) to our escrow wallet:
+Send USDT (Jetton) to our escrow wallet:
 
 🏦 Escrow Wallet:
 \`${ESCROW_WALLET}\`
 
 ⚠️ Important:
-• Only send USDT on TON Network
+• Only send USDT on TON Network (Jetton)
 • Minimum amount: 0.020 USDT
 • 1% fee will be charged
 
