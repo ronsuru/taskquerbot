@@ -569,6 +569,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // System Settings endpoints
+  app.get("/api/admin/settings", requireAdmin, async (req, res) => {
+    try {
+      const settings = await storage.getAllSystemSettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching system settings:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.put("/api/admin/settings", requireAdmin, async (req, res) => {
+    try {
+      const { settings } = req.body;
+      const userId = req.headers["x-user-id"] as string;
+      
+      if (!settings || !Array.isArray(settings)) {
+        return res.status(400).json({ error: "Settings array is required" });
+      }
+
+      const updatedSettings = [];
+      for (const setting of settings) {
+        if (!setting.key || setting.value === undefined) {
+          continue;
+        }
+        const updated = await storage.setSystemSetting(
+          setting.key,
+          setting.value.toString(),
+          setting.description,
+          userId
+        );
+        updatedSettings.push(updated);
+      }
+      
+      res.json(updatedSettings);
+    } catch (error) {
+      console.error("Error updating system settings:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

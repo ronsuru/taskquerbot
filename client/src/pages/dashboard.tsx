@@ -68,11 +68,11 @@ export default function Dashboard() {
               <h1 className="text-xl font-bold text-slate-900">TaskBot</h1>
             </div>
             <div className="flex items-center space-x-4">
-              {user?.id === "79da10b5-36c3-40b5-a4e1-d4eec60ecd9b" && (
+              {user?.isAdmin && (
                 <a href="/admin" className="text-slate-600 hover:text-telegram-blue transition-colors">
-                  <Button variant="outline" size="sm">
+                  <Button variant="default" size="sm" className="bg-red-600 hover:bg-red-700">
                     <Settings className="w-4 h-4 mr-2" />
-                    Admin Panel
+                    ADMIN ACCESS
                   </Button>
                 </a>
               )}

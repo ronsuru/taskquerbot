@@ -4,6 +4,7 @@ import {
   transactions, 
   taskSubmissions, 
   withdrawals,
+  systemSettings,
   type User, 
   type InsertUser,
   type Campaign,
@@ -13,7 +14,9 @@ import {
   type TaskSubmission,
   type InsertTaskSubmission,
   type Withdrawal,
-  type InsertWithdrawal
+  type InsertWithdrawal,
+  type SystemSetting,
+  type InsertSystemSetting
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql } from "drizzle-orm";
@@ -316,6 +319,94 @@ export class DatabaseStorage implements IStorage {
       .where(eq(withdrawals.status, "pending"))
       .orderBy(desc(withdrawals.createdAt));
   }
+
+  // System Settings methods
+  async getSystemSetting(key: string): Promise<SystemSetting | undefined> {
+    const [setting] = await db.select().from(systemSettings)
+      .where(eq(systemSettings.settingKey, key));
+    return setting || undefined;
+  }
+
+  async getAllSystemSettings(): Promise<SystemSetting[]> {
+    return await db.select().from(systemSettings)
+      .orderBy(systemSettings.settingKey);
+  }
+
+  async setSystemSetting(key: string, value: string, description?: string, updatedBy?: string): Promise<SystemSetting> {
+    const existing = await this.getSystemSetting(key);
+    
+    if (existing) {
+      const [updated] = await db
+        .update(systemSettings)
+        .set({ 
+          settingValue: value,
+          description: description || existing.description,
+          updatedBy: updatedBy || existing.updatedBy,
+          updatedAt: sql`now()`
+        })
+        .where(eq(systemSettings.settingKey, key))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(systemSettings)
+        .values({
+          settingKey: key,
+          settingValue: value,
+          description: description || "",
+          updatedBy: updatedBy
+        })
+        .returning();
+      return created;
+    }
+  }
+
+  // Helper methods for getting specific settings with defaults
+  async getMinSlots(): Promise<number> {
+    const setting = await this.getSystemSetting("min_slots");
+    return setting ? parseInt(setting.settingValue) : 5;
+  }
+
+  async getMinRewardAmount(): Promise<number> {
+    const setting = await this.getSystemSetting("min_reward_amount");
+    return setting ? parseFloat(setting.settingValue) : 0.015;
+  }
+
+  async getMinWithdrawalAmount(): Promise<number> {
+    const setting = await this.getSystemSetting("min_withdrawal_amount");
+    return setting ? parseFloat(setting.settingValue) : 0.020;
+  }
+
+  async getCampaignFeeRate(): Promise<number> {
+    const setting = await this.getSystemSetting("campaign_fee_rate");
+    return setting ? parseFloat(setting.settingValue) : 0.01; // 1%
+  }
+
+  async getWithdrawalFeeRate(): Promise<number> {
+    const setting = await this.getSystemSetting("withdrawal_fee_rate");
+    return setting ? parseFloat(setting.settingValue) : 0.01; // 1%
+  }
+
+  // Initialize default settings
+  async initializeDefaultSettings(): Promise<void> {
+    const defaultSettings = [
+      { key: "min_slots", value: "5", description: "Minimum number of slots for campaigns" },
+      { key: "min_reward_amount", value: "0.015", description: "Minimum reward amount per task (USDT)" },
+      { key: "min_withdrawal_amount", value: "0.020", description: "Minimum withdrawal amount (USDT)" },
+      { key: "campaign_fee_rate", value: "0.01", description: "Campaign creation fee rate (1% = 0.01)" },
+      { key: "withdrawal_fee_rate", value: "0.01", description: "Withdrawal fee rate (1% = 0.01)" }
+    ];
+
+    for (const setting of defaultSettings) {
+      const existing = await this.getSystemSetting(setting.key);
+      if (!existing) {
+        await this.setSystemSetting(setting.key, setting.value, setting.description);
+      }
+    }
+  }
 }
 
 export const storage = new DatabaseStorage();
+
+// Initialize default settings on startup
+storage.initializeDefaultSettings().catch(console.error);

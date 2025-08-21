@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, Users, Wallet, TrendingUp, TrendingDown, DollarSign, Activity, Zap, Send, PlayCircle } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import { Settings, Users, Wallet, TrendingUp, TrendingDown, DollarSign, Activity, Zap, Send, PlayCircle, Save, RotateCcw, Loader2, AlertCircle } from "lucide-react";
 
 const ADMIN_USER_ID = "79da10b5-36c3-40b5-a4e1-d4eec60ecd9b";
 
@@ -349,11 +351,12 @@ function AdminPage() {
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="users" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="users">Users Management</TabsTrigger>
           <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
           <TabsTrigger value="automation">Automation</TabsTrigger>
+          <TabsTrigger value="settings">System Settings</TabsTrigger>
         </TabsList>
 
         {/* Users Tab */}
@@ -723,8 +726,191 @@ function AdminPage() {
             </Card>
           </div>
         </TabsContent>
+
+        {/* System Settings Tab */}
+        <TabsContent value="settings">
+          <SystemSettingsPanel />
+        </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// System Settings Panel Component
+function SystemSettingsPanel() {
+  const { data: systemSettings, isLoading: settingsLoading } = useQuery({
+    queryKey: ["/api/admin/settings"],
+  });
+
+  const [tempSettings, setTempSettings] = useState<{ [key: string]: string }>({});
+
+  useEffect(() => {
+    if (systemSettings) {
+      const settings: { [key: string]: string } = {};
+      systemSettings.forEach((setting: any) => {
+        settings[setting.settingKey] = setting.settingValue;
+      });
+      setTempSettings(settings);
+    }
+  }, [systemSettings]);
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: async (settings: { key: string; value: string; description?: string }[]) => {
+      return apiRequest("/api/admin/settings", {
+        method: "PUT",
+        body: JSON.stringify({ settings }),
+      });
+    },
+    onSuccess: () => {
+      toast({ description: "System settings updated successfully" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/settings"] });
+    },
+    onError: () => {
+      toast({ description: "Failed to update system settings", variant: "destructive" });
+    }
+  });
+
+  const handleSaveSettings = () => {
+    const settingsToUpdate = Object.entries(tempSettings).map(([key, value]) => ({
+      key,
+      value,
+      description: getSettingDescription(key)
+    }));
+
+    updateSettingsMutation.mutate(settingsToUpdate);
+  };
+
+  const handleInputChange = (key: string, value: string) => {
+    setTempSettings(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const getSettingDescription = (key: string) => {
+    const descriptions: { [key: string]: string } = {
+      "min_slots": "Minimum number of slots for campaigns",
+      "min_reward_amount": "Minimum reward amount per task (USDT)",
+      "min_withdrawal_amount": "Minimum withdrawal amount (USDT)",
+      "campaign_fee_rate": "Campaign creation fee rate (1% = 0.01)",
+      "withdrawal_fee_rate": "Withdrawal fee rate (1% = 0.01)"
+    };
+    return descriptions[key] || "";
+  };
+
+  const getSettingLabel = (key: string) => {
+    const labels: { [key: string]: string } = {
+      "min_slots": "Minimum Slots",
+      "min_reward_amount": "Minimum Reward Amount (USDT)",
+      "min_withdrawal_amount": "Minimum Withdrawal Amount (USDT)",
+      "campaign_fee_rate": "Campaign Fee Rate (%)",
+      "withdrawal_fee_rate": "Withdrawal Fee Rate (%)"
+    };
+    return labels[key] || key;
+  };
+
+  const formatValueForDisplay = (key: string, value: string) => {
+    if (key.includes("fee_rate")) {
+      return (parseFloat(value) * 100).toString(); // Convert to percentage
+    }
+    return value;
+  };
+
+  const formatValueForSaving = (key: string, value: string) => {
+    if (key.includes("fee_rate")) {
+      return (parseFloat(value) / 100).toString(); // Convert from percentage
+    }
+    return value;
+  };
+
+  if (settingsLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>System Settings</CardTitle>
+          <CardDescription>Configure platform minimum values and fees</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">Loading settings...</div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>System Settings</CardTitle>
+        <CardDescription>
+          Configure minimum values for slots, reward amounts, withdrawal limits, and fees
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Changes to these settings will affect new campaigns and transactions immediately.
+            Existing campaigns will not be affected.
+          </AlertDescription>
+        </Alert>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {Object.entries(tempSettings).map(([key, value]) => (
+            <div key={key} className="space-y-2">
+              <Label htmlFor={key}>{getSettingLabel(key)}</Label>
+              <Input
+                id={key}
+                type="number"
+                step={key.includes("amount") ? "0.001" : "0.01"}
+                min="0"
+                value={formatValueForDisplay(key, value)}
+                onChange={(e) => handleInputChange(key, formatValueForSaving(key, e.target.value))}
+                placeholder={getSettingDescription(key)}
+              />
+              <p className="text-sm text-muted-foreground">
+                {getSettingDescription(key)}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-4 pt-4">
+          <Button 
+            onClick={handleSaveSettings}
+            disabled={updateSettingsMutation.isPending}
+            className="flex-1"
+          >
+            {updateSettingsMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Updating...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save Settings
+              </>
+            )}
+          </Button>
+          
+          <Button 
+            variant="outline"
+            onClick={() => {
+              if (systemSettings) {
+                const settings: { [key: string]: string } = {};
+                systemSettings.forEach((setting: any) => {
+                  settings[setting.settingKey] = setting.settingValue;
+                });
+                setTempSettings(settings);
+              }
+            }}
+          >
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Reset
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
