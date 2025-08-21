@@ -166,7 +166,6 @@ Use /menu to see all available commands.
 
       // Check if admin is entering a Telegram ID for withdrawal analysis
       if (awaitingWithdrawalLookup.has(telegramId) && text && /^\d{8,12}$/.test(text)) {
-        console.log(`[DEBUG] Processing withdrawal lookup ID ${text} from admin ${telegramId}`);
         awaitingWithdrawalLookup.delete(telegramId);
         await this.showWithdrawalAnalysis(chatId, telegramId, text);
         return;
@@ -876,6 +875,7 @@ Choose analysis type below:
       this.bot.sendMessage(chatId, confirmMessage, {
         reply_markup: {
           inline_keyboard: [
+            [{ text: '🔄 Refresh Analysis', callback_data: `lookup_withdrawals_${user.telegramId}` }],
             [{ text: '🔍 View Updated Account', callback_data: 'admin_user_lookup' }],
             [{ text: '🔙 Back to Admin Panel', callback_data: 'admin_panel' }]
           ]
@@ -940,8 +940,6 @@ Example: 1234567890
   }
 
   private async promptWithdrawalLookupId(chatId: number, telegramId: string) {
-    console.log(`[DEBUG] promptWithdrawalLookupId called for admin ${telegramId}`);
-    
     const message = `
 💸 WITHDRAWAL ANALYSIS
 
@@ -956,7 +954,6 @@ Example: 1234567890
     `;
 
     awaitingWithdrawalLookup.set(telegramId, true);
-    console.log(`[DEBUG] Set awaitingWithdrawalLookup for admin ${telegramId}`);
     
     this.bot.sendMessage(chatId, message, {
       reply_markup: {
@@ -1043,16 +1040,11 @@ ${balanceDiscrepancy ? '⚠️ DEPOSIT ISSUE DETECTED - Balance correction may b
 
   private async showWithdrawalAnalysis(chatId: number, adminTelegramId: string, targetTelegramId: string) {
     try {
-      console.log(`[DEBUG] Starting withdrawal analysis for user ${targetTelegramId} by admin ${adminTelegramId}`);
-      
       const user = await storage.getUserByTelegramId(targetTelegramId);
       if (!user) {
-        console.log(`[DEBUG] User ${targetTelegramId} not found`);
         this.bot.sendMessage(chatId, `❌ User with Telegram ID ${targetTelegramId} not found.`);
         return;
       }
-      
-      console.log(`[DEBUG] User found: ${user.id}, getting withdrawals...`);
 
       // Get withdrawal data
       const userWithdrawals = await storage.getUserWithdrawals(user.id);
@@ -1120,7 +1112,7 @@ ${failedWithdrawals.length > 0 ? '⚠️ WITHDRAWAL ISSUES DETECTED - Refunds ma
         }
       });
     } catch (error) {
-      console.error('[DEBUG] Error analyzing withdrawals:', error);
+      console.error('Error analyzing withdrawals:', error);
       this.bot.sendMessage(chatId, '❌ Error loading withdrawal analysis. Please try again.');
     }
   }
@@ -2630,6 +2622,16 @@ Please check:
         }
       }
 
+      // Handle quick withdrawal analysis refresh
+      if (data.startsWith('lookup_withdrawals_')) {
+        if (this.isAdmin(telegramId)) {
+          const targetTelegramId = data.replace('lookup_withdrawals_', '');
+          await this.showWithdrawalAnalysis(msg.chat.id, telegramId, targetTelegramId);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
       // Handle lookup type selection
       if (data === 'lookup_deposits') {
         if (this.isAdmin(telegramId)) {
@@ -2640,9 +2642,7 @@ Please check:
       }
 
       if (data === 'lookup_withdrawals') {
-        console.log(`[DEBUG] lookup_withdrawals callback triggered by admin ${telegramId}`);
         if (this.isAdmin(telegramId)) {
-          console.log(`[DEBUG] Admin check passed, calling promptWithdrawalLookupId`);
           await this.promptWithdrawalLookupId(msg.chat.id, telegramId);
         } else {
           this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
