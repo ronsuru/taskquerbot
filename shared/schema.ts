@@ -46,7 +46,7 @@ export const taskSubmissions = pgTable("task_submissions", {
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id),
   userId: varchar("user_id").notNull().references(() => users.id),
   proofUrl: text("proof_url"),
-  proofLinks: jsonb("proof_links").$type<string[]>().default('[]'),
+  proofLinks: jsonb("proof_links").$type<string[]>(),
   notes: text("notes"),
   status: text("status").notNull().default("pending"), // pending, approved, rejected
   createdAt: timestamp("created_at").notNull().default(sql`now()`),

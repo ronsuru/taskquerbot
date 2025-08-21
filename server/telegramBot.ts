@@ -32,9 +32,9 @@ Use /menu to see all available commands.
       this.bot.sendMessage(chatId, welcomeMessage, {
         reply_markup: {
           keyboard: [
-            ['👤 Create Account', '💰 Fund Account'],
-            ['📋 Available Campaigns', '🎯 My Campaigns'],
-            ['💸 Withdraw Funds', '🆘 Contact Support']
+            [{ text: '👤 Create Account' }, { text: '💰 Fund Account' }],
+            [{ text: '📋 Available Campaigns' }, { text: '🎯 My Campaigns' }],
+            [{ text: '💸 Withdraw Funds' }, { text: '🆘 Contact Support' }]
           ],
           resize_keyboard: true,
           one_time_keyboard: false
@@ -116,9 +116,9 @@ Choose an option:
     this.bot.sendMessage(chatId, menuMessage, {
       reply_markup: {
         keyboard: [
-          ['👤 Create Account', '💰 Fund Account'],
-          ['📋 Available Campaigns', '🎯 My Campaigns'],
-          ['💸 Withdraw Funds', '🆘 Contact Support']
+          [{ text: '👤 Create Account' }, { text: '💰 Fund Account' }],
+          [{ text: '📋 Available Campaigns' }, { text: '🎯 My Campaigns' }],
+          [{ text: '💸 Withdraw Funds' }, { text: '🆘 Contact Support' }]
         ],
         resize_keyboard: true
       }
@@ -598,4 +598,5 @@ if (BOT_TOKEN) {
   console.warn('TELEGRAM_BOT_TOKEN not provided. Bot will not start.');
 }
 
-export { TaskBot, taskBotInstance };
+export default TaskBot;
+export { taskBotInstance };

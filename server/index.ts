@@ -58,7 +58,7 @@ app.use((req, res, next) => {
 
   // Initialize Telegram Bot
   try {
-    const { TaskBot } = await import("./telegramBot");
+    await import("./telegramBot");
     log("Telegram TaskBot initialized successfully!");
   } catch (error) {
     log(`Telegram bot not started: ${error instanceof Error ? error.message : 'Unknown error'}`);
