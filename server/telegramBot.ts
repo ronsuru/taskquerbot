@@ -899,6 +899,13 @@ Example: a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890
 
       this.bot.sendMessage(chatId, '⏳ Verifying transaction...');
 
+      // Check if hash was already used
+      const existingTransaction = await storage.getTransactionByHash(hash);
+      if (existingTransaction) {
+        this.bot.sendMessage(chatId, '❌ This transaction hash was already used. Balance remains the same. Contact support if this is a mistake.');
+        return;
+      }
+
       // Verify transaction using TON API
       const verification = await tonService.verifyTransaction(hash);
       

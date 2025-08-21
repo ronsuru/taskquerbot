@@ -366,6 +366,11 @@ export class DatabaseStorage implements IStorage {
       );
   }
 
+  async getTransactionByHash(hash: string): Promise<Transaction | undefined> {
+    const [transaction] = await db.select().from(transactions).where(eq(transactions.hash, hash));
+    return transaction;
+  }
+
   async getPendingWithdrawals(): Promise<Withdrawal[]> {
     return await db.select().from(withdrawals)
       .where(eq(withdrawals.status, "pending"))
