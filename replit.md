@@ -60,11 +60,11 @@ Preferred communication style: Simple, everyday language.
 
 ## Cloud Storage
 - **Google Cloud Storage**: Object storage with ACL support
-- **Replit Integration**: Service account authentication through Replit's sidecar system
+- **Authentication**: Service account key file or JSON credentials
 
 ## Development Tools
-- **Replit**: Development environment with integrated tooling
-- **Vite Plugins**: Runtime error overlay and development cartographer for Replit
+- **Vite**: Fast build tool with React plugin
+- **TypeScript**: Type-safe development
 - **Drizzle Kit**: Database migrations and schema management
 
 ## UI & Styling

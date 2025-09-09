@@ -6,6 +6,7 @@ import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { ObjectPermission } from "./objectAcl";
 import { insertUserSchema, insertCampaignSchema, insertTaskSubmissionSchema } from "@shared/schema";
 import { z } from "zod";
+import { TaskBot } from "./telegramBot";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -28,6 +29,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const objectStorageService = new ObjectStorageService();
     const uploadURL = await objectStorageService.getObjectEntityUploadURL();
     res.json({ uploadURL });
+  });
+
+  // Telegram webhook endpoint
+  app.post(`/webhook/${process.env.TELEGRAM_BOT_TOKEN}`, async (req, res) => {
+    try {
+      // This will be handled by the TaskBot instance
+      // The bot will process the update automatically
+      res.status(200).send('OK');
+    } catch (error) {
+      console.error('Webhook error:', error);
+      res.status(500).send('Error');
+    }
   });
 
   // Test wallet endpoint

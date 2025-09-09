@@ -32,8 +32,86 @@ export class TaskBot {
   public bot: TelegramBot;
 
   constructor() {
-    this.bot = new TelegramBot(BOT_TOKEN, { polling: true });
+    // Use webhook mode instead of polling to avoid conflicts
+    this.bot = new TelegramBot(BOT_TOKEN, { 
+      polling: false // Disable polling
+    });
+    
+    this.bot.on('error', (error) => {
+      console.error('Telegram bot error:', error);
+    });
+    
     this.setupCommands();
+    this.setupWebhook();
+  }
+
+  private async setupWebhook() {
+    try {
+      // Clear any existing webhook first
+      await this.bot.deleteWebhook({ drop_pending_updates: true });
+      
+      // Set up webhook (we'll use a simple approach for now)
+      const webhookUrl = process.env.WEBHOOK_URL || `https://your-domain.com/webhook/${BOT_TOKEN}`;
+      
+      if (webhookUrl.includes('your-domain.com')) {
+        console.log('⚠️  Webhook URL not configured, using polling mode as fallback');
+        await this.startPollingMode();
+      } else {
+        await this.bot.setWebHook(webhookUrl);
+        console.log('✅ Webhook mode enabled');
+      }
+    } catch (error) {
+      console.error('❌ Error setting up webhook, falling back to polling:', error);
+      await this.startPollingMode();
+    }
+  }
+
+  private async startPollingMode() {
+    try {
+      console.log('🔄 Starting polling mode...');
+      await this.bot.startPolling({
+        interval: 2000,
+        autoStart: true,
+        params: {
+          timeout: 10
+        }
+      });
+      
+      // Add error handling for polling conflicts
+      this.bot.on('polling_error', (error) => {
+        console.error('Telegram polling error:', error.message);
+        if (error.message.includes('409 Conflict')) {
+          console.log('🔄 Polling conflict detected, waiting 10 seconds before retry...');
+          setTimeout(async () => {
+            try {
+              await this.bot.stopPolling();
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              await this.bot.startPolling();
+              console.log('✅ Bot restarted successfully');
+            } catch (restartError) {
+              console.error('❌ Error restarting bot:', restartError);
+            }
+          }, 10000);
+        }
+      });
+      
+      console.log('✅ Polling mode started');
+    } catch (error) {
+      console.error('❌ Error starting polling mode:', error);
+    }
+  }
+
+  private restartBot() {
+    try {
+      console.log('🔄 Restarting Telegram bot...');
+      this.bot.stopPolling();
+      setTimeout(() => {
+        this.bot.startPolling();
+        console.log('✅ Telegram bot restarted successfully');
+      }, 2000);
+    } catch (error) {
+      console.error('❌ Error restarting bot:', error);
+    }
   }
 
   private setupCommands() {

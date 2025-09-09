@@ -9,25 +9,18 @@ import {
   setObjectAclPolicy,
 } from "./objectAcl";
 
-const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
-
-// The object storage client is used to interact with the object storage service.
+// Initialize Google Cloud Storage client with standard authentication
+// Supports multiple authentication methods:
+// 1. Service account key file (GOOGLE_APPLICATION_CREDENTIALS)
+// 2. Service account JSON in environment variable (GOOGLE_SERVICE_ACCOUNT_KEY)
+// 3. Default credentials (for GCP environments)
 export const objectStorageClient = new Storage({
-  credentials: {
-    audience: "replit",
-    subject_token_type: "access_token",
-    token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
-    type: "external_account",
-    credential_source: {
-      url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
-      format: {
-        type: "json",
-        subject_token_field_name: "access_token",
-      },
-    },
-    universe_domain: "googleapis.com",
-  },
-  projectId: "",
+  projectId: process.env.GOOGLE_CLOUD_PROJECT_ID || "",
+  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+  // If using service account JSON directly in environment variable
+  ...(process.env.GOOGLE_SERVICE_ACCOUNT_KEY && {
+    credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY),
+  }),
 });
 
 export class ObjectNotFoundError extends Error {
@@ -290,7 +283,7 @@ async function signObjectURL({
   if (!response.ok) {
     throw new Error(
       `Failed to sign object URL, errorcode: ${response.status}, ` +
-        `make sure you're running on Replit`
+        `make sure you have proper Google Cloud Storage credentials configured`
     );
   }
 
