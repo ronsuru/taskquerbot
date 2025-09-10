@@ -51,7 +51,7 @@ pm2 delete taskquer-bot 2>/dev/null || true
 
 # Start the bot with PM2
 echo "🚀 Starting TaskquerBot..."
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 
 # Save PM2 configuration
 pm2 save

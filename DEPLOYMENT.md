@@ -9,6 +9,8 @@ This guide will help you deploy your Telegram bot on a VPS using multiple method
 - Domain name (optional, for webhook setup)
 - All environment variables ready
 
+> **Note:** This project uses ES modules (`"type": "module"` in package.json), so PM2 configuration uses `.cjs` extension for CommonJS compatibility.
+
 ## 🛠️ Method 1: Direct PM2 Deployment (Recommended)
 
 ### Step 1: Connect to Your VPS
@@ -55,7 +57,7 @@ GOOGLE_CLOUD_KEY_FILE=path_to_service_account_key.json
 
 ### Step 5: Start the Bot
 ```bash
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 pm2 save
 pm2 startup
 ```
