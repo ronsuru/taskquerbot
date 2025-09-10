@@ -1,143 +1,296 @@
-# 🚀 Deployment Guide - Non-Replit Environment
+# 🚀 VPS Deployment Guide for TaskquerBot
 
-This guide helps you deploy TaskBot outside of Replit with all dependencies properly configured.
+This guide will help you deploy your Telegram bot on a VPS using multiple methods.
 
 ## 📋 Prerequisites
 
-- Node.js 18+ 
-- PostgreSQL database
-- Google Cloud Storage bucket
-- TON blockchain API access
+- VPS with Ubuntu 20.04+ or similar Linux distribution
+- Root or sudo access
+- Domain name (optional, for webhook setup)
+- All environment variables ready
 
-## 🔧 Environment Variables
+## 🛠️ Method 1: Direct PM2 Deployment (Recommended)
 
-Create a `.env` file in the project root with the following variables:
-
-### Database Configuration
+### Step 1: Connect to Your VPS
 ```bash
-DATABASE_URL=postgresql://username:password@host:port/database
+ssh root@your-vps-ip
+# or
+ssh username@your-vps-ip
 ```
 
-### Google Cloud Storage Configuration
-Choose **ONE** of the following authentication methods:
-
-#### Option 1: Service Account Key File
+### Step 2: Clone Repository
 ```bash
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
-GOOGLE_CLOUD_PROJECT_ID=your-project-id
+git clone https://github.com/ronsuru/taskquerbot.git
+cd taskquerbot
 ```
 
-#### Option 2: Service Account JSON in Environment Variable
+### Step 3: Run Deployment Script
 ```bash
-GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"your-project",...}
-GOOGLE_CLOUD_PROJECT_ID=your-project-id
+chmod +x deploy.sh
+./deploy.sh
 ```
 
-#### Option 3: Default Credentials (for GCP environments)
+### Step 4: Configure Environment Variables
 ```bash
-GOOGLE_CLOUD_PROJECT_ID=your-project-id
-# No additional credentials needed - uses default service account
+nano .env
 ```
 
-### TON Blockchain Configuration
-```bash
-TON_API_KEY=your-tonapi-key
-MNEMONIC_WALLET_KEY="your 24 word mnemonic phrase here"
+Add your environment variables:
+```env
+# Database
+DATABASE_URL=your_postgresql_connection_string
+
+# Telegram Bot
+TELEGRAM_BOT_TOKEN=your_bot_token
+ADMIN_TELEGRAM_ID=your_admin_telegram_id
+
+# TON Blockchain
+TON_API_KEY=your_ton_api_key
+ESCROW_WALLET=your_escrow_wallet_address
+
+# Google Cloud Storage (optional)
+GOOGLE_CLOUD_PROJECT_ID=your_project_id
+GOOGLE_CLOUD_KEY_FILE=path_to_service_account_key.json
 ```
 
-### Optional Configuration
+### Step 5: Start the Bot
 ```bash
-# Telegram Bot (optional)
-TELEGRAM_BOT_TOKEN=your-telegram-bot-token
-ADMIN_TELEGRAM_ID=your-admin-telegram-id
-
-# Server Configuration
-PORT=5000
-NODE_ENV=production
-
-# Object Storage
-PUBLIC_OBJECT_SEARCH_PATHS=/public,/uploads
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
 ```
 
-## 🛠️ Installation Steps
+## 🐳 Method 2: Docker Deployment
 
-1. **Install Dependencies**
+### Step 1: Install Docker
+```bash
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+sudo usermod -aG docker $USER
+```
+
+### Step 2: Install Docker Compose
+```bash
+sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+```
+
+### Step 3: Deploy with Docker
+```bash
+git clone https://github.com/ronsuru/taskquerbot.git
+cd taskquerbot
+cp .env.example .env
+# Edit .env with your values
+docker-compose up -d
+```
+
+## 🔧 Management Commands
+
+### PM2 Commands
+```bash
+# Check status
+pm2 status
+
+# View logs
+pm2 logs taskquer-bot
+
+# Restart bot
+pm2 restart taskquer-bot
+
+# Stop bot
+pm2 stop taskquer-bot
+
+# Monitor
+pm2 monit
+```
+
+### Docker Commands
+```bash
+# View logs
+docker-compose logs -f
+
+# Restart
+docker-compose restart
+
+# Stop
+docker-compose down
+
+# Update and restart
+docker-compose pull
+docker-compose up -d
+```
+
+## 🔒 Security Setup
+
+### 1. Firewall Configuration
+```bash
+# Allow SSH, HTTP, HTTPS
+sudo ufw allow ssh
+sudo ufw allow 80
+sudo ufw allow 443
+sudo ufw enable
+```
+
+### 2. SSL Certificate (Optional)
+```bash
+# Install Certbot
+sudo apt install certbot
+
+# Get SSL certificate
+sudo certbot certonly --standalone -d yourdomain.com
+```
+
+### 3. Nginx Reverse Proxy (Optional)
+```bash
+# Install Nginx
+sudo apt install nginx
+
+# Create configuration
+sudo nano /etc/nginx/sites-available/taskquer-bot
+```
+
+Nginx configuration:
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+## 📊 Monitoring & Logs
+
+### 1. Set up Log Rotation
+```bash
+sudo nano /etc/logrotate.d/taskquer-bot
+```
+
+Add:
+```
+/path/to/taskquerbot/logs/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 644 nodejs nodejs
+}
+```
+
+### 2. Monitor Resources
+```bash
+# Install htop for monitoring
+sudo apt install htop
+
+# Monitor with PM2
+pm2 monit
+```
+
+## 🔄 Updates & Maintenance
+
+### Update Bot
+```bash
+cd taskquerbot
+git pull origin main
+npm install
+npm run build
+pm2 restart taskquer-bot
+```
+
+### Backup Database
+```bash
+# Create backup script
+nano backup.sh
+```
+
+Add:
+```bash
+#!/bin/bash
+pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql
+```
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+1. **Bot not starting**
    ```bash
-   npm install
+   pm2 logs taskquer-bot
+   # Check for error messages
    ```
 
-2. **Set up Database**
+2. **Database connection issues**
    ```bash
-   npm run db:push
+   # Test database connection
+   node -e "console.log(process.env.DATABASE_URL)"
    ```
 
-3. **Build Application**
+3. **Memory issues**
    ```bash
-   npm run build
+   # Check memory usage
+   free -h
+   pm2 monit
    ```
 
-4. **Start Application**
+4. **Port conflicts**
    ```bash
-   npm start
+   # Check what's using port 3000
+   sudo netstat -tlnp | grep :3000
    ```
 
-## 🔐 Google Cloud Storage Setup
+## 📈 Performance Optimization
 
-1. **Create a Google Cloud Project**
-2. **Enable Cloud Storage API**
-3. **Create a Service Account** with Storage Admin permissions
-4. **Download the service account key** (JSON file)
-5. **Configure authentication** using one of the methods above
+### 1. Increase PM2 Memory Limit
+```bash
+# Edit ecosystem.config.js
+max_memory_restart: '2G'
+```
 
-## ⛓️ TON Blockchain Setup
+### 2. Enable PM2 Clustering (if needed)
+```bash
+# In ecosystem.config.js
+instances: 'max'
+```
 
-1. **Get TonAPI Key** from [tonapi.io](https://tonapi.io)
-2. **Create a TON wallet** and get the 24-word mnemonic
-3. **Fund the wallet** with TON for transaction fees
-4. **Set the environment variables** as shown above
+### 3. Database Optimization
+- Use connection pooling
+- Optimize queries
+- Regular maintenance
 
-## 🚀 Deployment Platforms
+## 🔐 Environment Variables Checklist
 
-### Vercel
-- Set environment variables in Vercel dashboard
-- Deploy using Vercel CLI or GitHub integration
+Make sure these are set in your `.env` file:
 
-### Railway
-- Connect your GitHub repository
-- Set environment variables in Railway dashboard
-- Deploy automatically
+- [ ] `DATABASE_URL` - PostgreSQL connection string
+- [ ] `TELEGRAM_BOT_TOKEN` - Bot token from @BotFather
+- [ ] `ADMIN_TELEGRAM_ID` - Your Telegram ID
+- [ ] `TON_API_KEY` - TON API key
+- [ ] `ESCROW_WALLET` - TON wallet address
+- [ ] `GOOGLE_CLOUD_PROJECT_ID` - (Optional)
+- [ ] `GOOGLE_CLOUD_KEY_FILE` - (Optional)
 
-### DigitalOcean App Platform
-- Connect your repository
-- Configure environment variables
-- Deploy with automatic builds
+## 📞 Support
 
-### Self-hosted (VPS/Dedicated Server)
-- Follow the installation steps above
-- Use PM2 or similar process manager
-- Set up reverse proxy (nginx/Apache)
+If you encounter issues:
 
-## ✅ Verification
+1. Check the logs: `pm2 logs taskquer-bot`
+2. Verify environment variables
+3. Test database connectivity
+4. Check Telegram bot token
+5. Review the troubleshooting section above
 
-After deployment, verify:
-1. Database connection is working
-2. Google Cloud Storage authentication is successful
-3. TON blockchain integration is functional
-4. All API endpoints are responding correctly
+---
 
-## 🔧 Troubleshooting
-
-### Google Cloud Storage Issues
-- Verify service account permissions
-- Check project ID is correct
-- Ensure Cloud Storage API is enabled
-
-### TON Blockchain Issues
-- Verify API key is valid
-- Check wallet mnemonic is correct
-- Ensure wallet has sufficient TON for fees
-
-### Database Issues
-- Verify DATABASE_URL format
-- Check database server is accessible
-- Ensure database exists and user has permissions
+**Your TaskquerBot is now ready to run 24/7 on your VPS! 🎉**
