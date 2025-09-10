@@ -1,174 +1,215 @@
-# TaskBot - Social Media Marketing Automation Platform
+# 🤖 TaskquerBot - Advanced Telegram Task Management Bot
 
-A comprehensive social media marketing automation platform built on the TON blockchain, featuring task management, campaign creation, and secure escrow payments.
+A sophisticated Telegram bot for managing social media campaigns and tasks with TON blockchain integration, URL validation, and comprehensive admin controls.
 
-## 🚀 Features
+## ✨ Features
 
-- **Task Management**: Create and manage social media marketing tasks
-- **Campaign Creation**: Set up marketing campaigns with rewards
-- **TON Blockchain Integration**: Secure payments using USDT on TON network
-- **Telegram Bot**: Interactive bot for task management and notifications
-- **Admin Dashboard**: Complete admin interface for platform management
-- **Google Cloud Storage**: Secure file storage and management
-- **Escrow System**: Secure payment handling with automatic releases
+### 🎯 Core Functionality
+- **Campaign Creation** - Multi-step campaign creation with platform-specific validation
+- **Task Management** - Complete task lifecycle management
+- **Balance Management** - TON blockchain integration for USDT transactions
+- **User Management** - Account creation and wallet management
+- **Admin Panel** - Comprehensive administrative controls
 
-## 🛠️ Tech Stack
+### 🔒 Security Features
+- **URL Validation** - Platform-specific URL verification (Facebook, Twitter, Instagram, etc.)
+- **Phishing Protection** - Detection and blocking of suspicious URLs
+- **Shortened URL Detection** - Prevention of malicious shortened links
+- **Domain Verification** - Ensures URLs match selected platforms
 
-### Frontend
-- **React** with TypeScript
-- **Vite** for build tooling
-- **Tailwind CSS** for styling
-- **Radix UI** for components
-- **TanStack Query** for data fetching
-- **Wouter** for routing
+### 🛡️ Admin Controls
+- **Dynamic Platform Management** - Add/remove campaign platforms
+- **User Balance Management** - View and manage user balances
+- **Transaction Monitoring** - Track deposits and withdrawals
+- **Campaign Oversight** - Pause, reactivate, and delete campaigns
+- **System Settings** - Configure bot parameters
 
-### Backend
-- **Node.js** with Express
-- **TypeScript** for type safety
-- **Drizzle ORM** with PostgreSQL (Neon Database)
-- **Telegram Bot API** for bot functionality
-- **Google Cloud Storage** for file management
-
-### Blockchain
-- **TON Network** integration
-- **USDT (Jetton)** payments
-- **TonAPI.io** for blockchain data
-- **TonKeeper** wallet integration
-
-## 📋 Prerequisites
-
-- Node.js 18+ 
-- PostgreSQL database (Neon recommended)
-- Google Cloud Project with Storage API
-- Telegram Bot Token
-- TON API Key
+### 💰 Blockchain Integration
+- **TON Network** - Full TON blockchain integration
+- **USDT Support** - Jetton-based USDT transactions
+- **Escrow System** - Secure fund management
+- **Transaction Tracking** - Complete transaction history
 
 ## 🚀 Quick Start
 
-### 1. Clone the Repository
-```bash
-git clone <your-repo-url>
-cd Taskquer1
+### Prerequisites
+- Node.js 18+ 
+- PostgreSQL database (Neon recommended)
+- Telegram Bot Token
+- TON API access
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/ronsuru/taskquerbot.git
+   cd taskquerbot
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Environment Setup**
+   Create a `.env` file with the following variables:
+   ```env
+   # Database
+   DATABASE_URL=your_postgresql_connection_string
+   
+   # Telegram Bot
+   TELEGRAM_BOT_TOKEN=your_bot_token
+   ADMIN_TELEGRAM_ID=your_admin_telegram_id
+   
+   # TON Blockchain
+   TON_API_KEY=your_ton_api_key
+   ESCROW_WALLET=your_escrow_wallet_address
+   
+   # Google Cloud Storage (optional)
+   GOOGLE_CLOUD_PROJECT_ID=your_project_id
+   GOOGLE_CLOUD_KEY_FILE=path_to_service_account_key.json
+   ```
+
+4. **Database Setup**
+   The bot will automatically create necessary tables on first run.
+
+5. **Start the Bot**
+   ```bash
+   # TypeScript version (recommended)
+   npx tsx server/telegramBot.ts
+   
+   # Or JavaScript version
+   npm run pure-bot
+   ```
+
+## 📱 Bot Commands
+
+### User Commands
+- `/start` - Initialize bot and show main menu
+- `/help` - Display help information
+- `/balance` - Check account balance
+- `/withdraw` - Withdraw funds
+- `/profile` - View account details
+
+### Admin Commands
+- **Admin Panel** - Access administrative controls
+- **Platform Management** - Add/remove campaign platforms
+- **User Management** - View and manage user accounts
+- **Balance Management** - Monitor and adjust user balances
+- **Transaction Review** - Review deposits and withdrawals
+
+## 🏗️ Architecture
+
+### Project Structure
 ```
-
-### 2. Install Dependencies
-```bash
-npm install
-```
-
-### 3. Environment Setup
-Copy the example environment file:
-```bash
-cp create-env-example.txt .env
-```
-
-Fill in your environment variables in `.env`:
-```env
-# Database
-DATABASE_URL="postgresql://username:password@host:port/database"
-
-# Telegram Bot
-TELEGRAM_BOT_TOKEN="your_bot_token"
-ADMIN_TELEGRAM_ID="your_telegram_id"
-
-# Google Cloud Storage
-GOOGLE_CLOUD_PROJECT_ID="your_project_id"
-GOOGLE_APPLICATION_CREDENTIALS="service-account-key.json"
-
-# TON Blockchain
-TON_API_KEY="your_ton_api_key"
-MNEMONIC_WALLET_KEY="your_wallet_mnemonic"
-
-# Session
-SESSION_SECRET="your_session_secret"
-```
-
-### 4. Database Setup
-```bash
-npm run db:push
-```
-
-### 5. Start the Application
-
-#### Option A: Start Everything Together
-```bash
-npm run start:all
-```
-
-#### Option B: Start Services Separately
-```bash
-# Terminal 1: Web Server
-npm run dev
-
-# Terminal 2: Telegram Bot
-npm run bot
-```
-
-### 6. Access the Application
-- **Web App**: http://localhost:5000
-- **Telegram Bot**: @taskquer_bot
-
-## 📁 Project Structure
-
-```
-Taskquer1/
-├── client/                 # Frontend React application
-│   ├── src/
-│   │   ├── components/     # React components
-│   │   ├── pages/         # Page components
-│   │   ├── hooks/         # Custom React hooks
-│   │   └── lib/           # Utility libraries
-├── server/                # Backend Express server
-│   ├── routes.ts          # API routes
-│   ├── telegramBot.ts     # Telegram bot logic
+taskquerbot/
+├── client/                 # React frontend (optional)
+├── server/                 # Backend services
+│   ├── telegramBot.ts     # Main bot implementation
+│   ├── storage.ts         # Database operations
 │   ├── tonService.ts      # TON blockchain integration
-│   └── objectStorage.ts   # Google Cloud Storage
+│   └── urlValidator.ts    # URL validation system
 ├── shared/                # Shared schemas and types
-└── scripts/               # Utility scripts
+├── pure-telegram-bot.js   # Standalone JavaScript bot
+└── package.json          # Dependencies and scripts
 ```
 
-## 🔧 Available Scripts
+### Key Components
 
-### Development
-- `npm run dev` - Start web server in development mode
-- `npm run bot` - Start Telegram bot
-- `npm run start:all` - Start both services together
+#### 🤖 Telegram Bot (`server/telegramBot.ts`)
+- Complete bot implementation with TypeScript
+- Multi-step campaign creation flow
+- Admin panel with full controls
+- URL validation and security features
+- Balance management and transaction handling
 
-### Testing
-- `npm run test:gcs` - Test Google Cloud Storage
-- `npm run test:ton` - Test TON API
-- `npm run test:telegram` - Test Telegram bot
-- `npm run check:bot` - Check bot status
+#### 🔗 URL Validator (`server/urlValidator.ts`)
+- Platform-specific URL validation
+- Phishing detection
+- Shortened URL blocking
+- Domain verification
 
-### Utilities
-- `npm run clear:webhook` - Clear Telegram webhook
-- `npm run db:push` - Push database schema
+#### 💾 Database Layer (`server/storage.ts`)
+- PostgreSQL integration with Drizzle ORM
+- User, campaign, and transaction management
+- Platform configuration storage
+- Admin settings management
 
-## 🔐 Security Features
+#### ⛓️ TON Integration (`server/tonService.ts`)
+- TON blockchain connectivity
+- USDT transaction handling
+- Balance checking and updates
+- Transaction verification
 
-- **Environment Variables**: All sensitive data stored in `.env`
-- **Input Validation**: Zod schema validation for all inputs
-- **SQL Injection Protection**: Drizzle ORM with parameterized queries
-- **CORS Configuration**: Proper cross-origin resource sharing
-- **Session Management**: Secure session handling
+## 🔧 Configuration
 
-## 🌐 Deployment
+### Platform Management
+The bot supports dynamic platform management. Admins can add/remove platforms through the admin panel:
 
-### Environment Variables Required
-- `DATABASE_URL` - PostgreSQL connection string
-- `TELEGRAM_BOT_TOKEN` - Telegram bot token
-- `ADMIN_TELEGRAM_ID` - Admin Telegram user ID
-- `GOOGLE_CLOUD_PROJECT_ID` - Google Cloud project ID
-- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account key
-- `TON_API_KEY` - TON blockchain API key
-- `MNEMONIC_WALLET_KEY` - Wallet mnemonic phrase
-- `SESSION_SECRET` - Session encryption secret
+**Supported Platforms:**
+- Facebook
+- Twitter/X
+- Instagram
+- TikTok
+- YouTube
+- LinkedIn
+- Telegram
+- Discord
+- Reddit
+- Snapchat
+- Pinterest
 
-### Production Build
+### URL Validation Rules
+- **Platform Matching** - URLs must match selected platform
+- **HTTPS Enforcement** - Only secure connections allowed
+- **Domain Verification** - Valid platform domains only
+- **Phishing Protection** - Suspicious patterns blocked
+- **Shortened URL Blocking** - No bit.ly, tinyurl.com, etc.
+
+## 🛠️ Development
+
+### Available Scripts
 ```bash
-npm run build
-npm start
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run pure-bot     # Run JavaScript bot
+npm run test:gcs     # Test Google Cloud Storage
+npm run test:ton     # Test TON integration
+npm run test:telegram # Test Telegram bot
 ```
+
+### Database Schema
+- **users** - User accounts and balances
+- **campaigns** - Campaign information
+- **transactions** - Transaction history
+- **system_settings** - Platform and system configuration
+
+## 🔐 Security
+
+### Admin Access
+- **Primary Admin:** `5154336054`
+- **Secondary Admin:** `7060994514`
+- Admin privileges include full system control
+
+### Data Protection
+- Environment variables for sensitive data
+- Database connection encryption
+- Secure TON wallet integration
+- Input validation and sanitization
+
+## 📊 Monitoring
+
+### Logs
+- Comprehensive error logging
+- Transaction tracking
+- User activity monitoring
+- Admin action logging
+
+### Health Checks
+- Database connectivity
+- TON network status
+- Telegram API status
+- Bot functionality verification
 
 ## 🤝 Contributing
 
@@ -180,18 +221,29 @@ npm start
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## 🆘 Support
 
 For support and questions:
-- Create an issue in the repository
-- Check the documentation in `/docs`
-- Review the setup guides in the root directory
+- **Telegram:** Contact the bot directly
+- **Issues:** Create a GitHub issue
+- **Documentation:** Check this README
 
-## 🔗 Links
+## 🚀 Deployment
 
-- [TON Network](https://ton.org/)
-- [Telegram Bot API](https://core.telegram.org/bots/api)
-- [Google Cloud Storage](https://cloud.google.com/storage)
-- [Neon Database](https://neon.tech/)
+### Production Deployment
+1. Set up PostgreSQL database
+2. Configure environment variables
+3. Deploy to your preferred hosting platform
+4. Set up process management (PM2 recommended)
+5. Configure monitoring and logging
+
+### Recommended Hosting
+- **VPS/Cloud:** DigitalOcean, AWS, Google Cloud
+- **Serverless:** Vercel, Netlify (for frontend)
+- **Database:** Neon, Supabase, AWS RDS
+
+---
+
+**Built with ❤️ using TypeScript, Node.js, and TON blockchain**
