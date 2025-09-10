@@ -27,6 +27,7 @@ export interface IStorage {
   getUserByTelegramId(telegramId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUserBalance(id: string, amount: string): Promise<User>;
+  updateUserWalletAddress(id: string, walletAddress: string): Promise<User>;
   
   // Campaigns
   getCampaigns(platform?: string): Promise<Campaign[]>;
@@ -71,6 +72,11 @@ export interface IStorage {
   getAllSystemSettings(): Promise<SystemSetting[]>;
   setSystemSetting(key: string, value: string, description?: string, updatedBy?: string): Promise<SystemSetting>;
   initializeDefaultSettings(): Promise<void>;
+  
+  // Platform management
+  getAvailablePlatforms(): Promise<string[]>;
+  addPlatform(platform: string, updatedBy?: string): Promise<void>;
+  removePlatform(platform: string, updatedBy?: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -96,6 +102,15 @@ export class DatabaseStorage implements IStorage {
     const [user] = await db
       .update(users)
       .set({ balance: amount })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  async updateUserWalletAddress(id: string, walletAddress: string): Promise<User> {
+    const [user] = await db
+      .update(users)
+      .set({ walletAddress: walletAddress })
       .where(eq(users.id, id))
       .returning();
     return user;
@@ -457,6 +472,40 @@ export class DatabaseStorage implements IStorage {
         await this.setSystemSetting(setting.key, setting.value, setting.description);
       }
     }
+  }
+
+  // Platform management methods
+  async getAvailablePlatforms(): Promise<string[]> {
+    const setting = await this.getSystemSetting("available_platforms");
+    if (setting) {
+      return JSON.parse(setting.settingValue);
+    }
+    // Return default platforms if none set
+    return ["facebook", "twitter", "instagram", "tiktok", "youtube", "linkedin"];
+  }
+
+  async addPlatform(platform: string, updatedBy?: string): Promise<void> {
+    const platforms = await this.getAvailablePlatforms();
+    if (!platforms.includes(platform.toLowerCase())) {
+      platforms.push(platform.toLowerCase());
+      await this.setSystemSetting(
+        "available_platforms", 
+        JSON.stringify(platforms), 
+        "List of available platforms for campaigns",
+        updatedBy
+      );
+    }
+  }
+
+  async removePlatform(platform: string, updatedBy?: string): Promise<void> {
+    const platforms = await this.getAvailablePlatforms();
+    const filteredPlatforms = platforms.filter(p => p !== platform.toLowerCase());
+    await this.setSystemSetting(
+      "available_platforms", 
+      JSON.stringify(filteredPlatforms), 
+      "List of available platforms for campaigns",
+      updatedBy
+    );
   }
 }
 

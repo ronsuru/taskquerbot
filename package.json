@@ -15,6 +15,7 @@
     "check:bot": "node check-bot-status.js",
     "clear:webhook": "node clear-webhook.js",
     "bot": "node standalone-bot.js",
+    "pure-bot": "node pure-telegram-bot.js",
     "start:all": "node start-all.js"
   },
   "dependencies": {

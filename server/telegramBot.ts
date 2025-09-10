@@ -28,6 +28,12 @@ const awaitingSettingChange = new Map<string, string>(); // telegramId -> settin
 const awaitingDepositLookup = new Map<string, boolean>(); // telegramId -> boolean
 const awaitingWithdrawalLookup = new Map<string, boolean>(); // telegramId -> boolean
 
+// Wallet address change state management
+const awaitingWalletChange = new Map<string, boolean>(); // telegramId -> boolean
+
+// Platform change state management
+const awaitingPlatformChange = new Map<string, string>(); // telegramId -> 'add' | 'remove'
+
 export class TaskBot {
   public bot: TelegramBot;
 
@@ -116,7 +122,7 @@ export class TaskBot {
 
   private setupCommands() {
     // Start command
-    this.bot.onText(/\/start/, (msg) => {
+    this.bot.onText(/\/start/, async (msg) => {
       const chatId = msg.chat.id;
       const welcomeMessage = `
 🚀 Welcome to TaskBot!
@@ -133,10 +139,16 @@ Use /menu to see all available commands.
       const telegramId = msg.from?.id.toString() || '';
       const isAdminUser = this.isAdmin(telegramId);
       
+      // Check if user has an account to determine button text
+      const user = telegramId ? await storage.getUserByTelegramId(telegramId) : null;
+      const hasAccount = !!user;
+      const accountButtonText = hasAccount ? '👤 Account Details' : '👤 Create Account';
+      
       const keyboard: any[] = [
-        [{ text: '👤 Create Account' }, { text: '💰 Fund Account' }],
+        [{ text: accountButtonText }, { text: '💰 Fund Account' }],
         [{ text: '📋 Available Campaigns' }, { text: '🎯 My Campaigns' }],
-        [{ text: '💸 Withdraw Funds' }, { text: '🆘 Contact Support' }]
+        [{ text: '💸 Withdraw Funds' }, { text: '🆘 Contact Support' }],
+        [{ text: '🔧 Test Wallet' }, { text: '🔄 Change Wallet Address' }]
       ];
 
       if (isAdminUser) {
@@ -169,6 +181,9 @@ Use /menu to see all available commands.
         case '👤 Create Account':
           this.handleCreateAccount(chatId, telegramId);
           break;
+        case '👤 Account Details':
+          this.handleAccountDetails(chatId, telegramId);
+          break;
         case '💰 Fund Account':
           this.handleFundAccount(chatId, telegramId);
           break;
@@ -187,6 +202,9 @@ Use /menu to see all available commands.
         case '🔧 Test Wallet':
           this.handleTestWallet(chatId, telegramId);
           break;
+        case '🔄 Change Wallet Address':
+          this.handleChangeWalletAddress(chatId, telegramId);
+          break;
         case '🔴 Admin Panel':
           if (this.isAdmin(telegramId)) {
             this.showAdminPanel(chatId, telegramId);
@@ -204,7 +222,12 @@ Use /menu to see all available commands.
       const walletAddress = match?.[0] || '';
 
       if (walletAddress) {
-        await this.createUserAccount(chatId, telegramId, walletAddress);
+        // Check if user is changing wallet address
+        if (awaitingWalletChange.has(telegramId)) {
+          await this.updateUserWalletAddress(chatId, telegramId, walletAddress);
+        } else {
+          await this.createUserAccount(chatId, telegramId, walletAddress);
+        }
       }
     });
 
@@ -246,6 +269,13 @@ Use /menu to see all available commands.
       if (awaitingWithdrawalLookup.has(telegramId) && text && /^\d{8,12}$/.test(text)) {
         awaitingWithdrawalLookup.delete(telegramId);
         await this.showWithdrawalAnalysis(chatId, telegramId, text);
+        return;
+      }
+
+      // Check if admin is adding a new platform
+      if (awaitingPlatformChange.has(telegramId) && awaitingPlatformChange.get(telegramId) === 'add' && text && !text.startsWith('/')) {
+        await this.processAddPlatform(chatId, telegramId, text);
+        awaitingPlatformChange.delete(telegramId);
         return;
       }
     });
@@ -332,7 +362,7 @@ Use /menu to see all available commands.
 
   // Admin check helper
   private isAdmin(telegramId: string): boolean {
-    return telegramId === "5154336054";
+    return telegramId === "5154336054" || telegramId === "7060994514";
   }
 
   // Admin Panel
@@ -366,6 +396,7 @@ Choose an admin function:
           inline_keyboard: [
             [{ text: '💰 Balance Management', callback_data: 'admin_balance_menu' }],
             [{ text: '📋 Task Management', callback_data: 'admin_task_menu' }],
+            [{ text: '🌐 Platform Management', callback_data: 'admin_platform_menu' }],
             [{ text: '🔍 User Lookup', callback_data: 'admin_user_lookup' }],
             [{ text: '⚙️ Advanced Settings', callback_data: 'admin_settings_menu' }],
             [{ text: '📊 System Information', callback_data: 'admin_system_info' }],
@@ -1330,29 +1361,36 @@ Please enter the new value (numbers only):
     }
   }
 
-  private showMainMenu(chatId: number, telegramId?: string) {
-    const isAdminUser = telegramId && this.isAdmin(telegramId);
-    
+  private async showMainMenu(chatId: number, telegramId?: string) {
+    try {
+      const isAdminUser = telegramId && this.isAdmin(telegramId);
+      const user = telegramId ? await storage.getUserByTelegramId(telegramId) : null;
+      const hasAccount = !!user;
+      
+      const accountButtonText = hasAccount ? '👤 Account Details' : '👤 Create Account';
+      const accountButtonDescription = hasAccount ? 'View your account information' : 'Register your TON wallet';
+      
     const menuMessage = `
 📋 Main Menu
 
 Choose an option:
 
-👤 Create Account - Register your TON wallet
+${accountButtonText} - ${accountButtonDescription}
 💰 Fund Account - Add USDT to your balance
 📋 Available Campaigns - Browse and join tasks
 🎯 My Campaigns - Create and manage campaigns
 💸 Withdraw Funds - Withdraw your earnings
 🆘 Contact Support - Get help from our team
-🔧 Test Wallet - Check blockchain connectivity${isAdminUser ? '\n🔴 Admin Panel - Balance Management' : ''}
+🔧 Test Wallet - Check blockchain connectivity
+🔄 Change Wallet Address - Update your wallet address${isAdminUser ? '\n🔴 Admin Panel - Balance Management' : ''}
     `;
 
-    const keyboard: any[] = [
-      [{ text: '👤 Create Account' }, { text: '💰 Fund Account' }],
-      [{ text: '📋 Available Campaigns' }, { text: '🎯 My Campaigns' }],
-      [{ text: '💸 Withdraw Funds' }, { text: '🆘 Contact Support' }],
-      [{ text: '🔧 Test Wallet' }]
-    ];
+      const keyboard: any[] = [
+        [{ text: accountButtonText }, { text: '💰 Fund Account' }],
+        [{ text: '📋 Available Campaigns' }, { text: '🎯 My Campaigns' }],
+        [{ text: '💸 Withdraw Funds' }, { text: '🆘 Contact Support' }],
+        [{ text: '🔧 Test Wallet' }, { text: '🔄 Change Wallet Address' }]
+      ];
 
     if (isAdminUser) {
       keyboard.push([{ text: '🔴 Admin Panel' }]);
@@ -1360,10 +1398,15 @@ Choose an option:
 
     this.bot.sendMessage(chatId, menuMessage, {
       reply_markup: {
-        keyboard,
-        resize_keyboard: true
+        keyboard: keyboard,
+        resize_keyboard: true,
+        one_time_keyboard: false
       }
     });
+    } catch (error) {
+      console.error('Error in showMainMenu:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading menu. Please try again.');
+    }
   }
 
   private async handleCreateAccount(chatId: number, telegramId: string) {
@@ -1396,6 +1439,9 @@ To activate your account, please send your TON wallet address.
 EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv
 
 ⚠️ Make sure you own this wallet as all payments will be sent here.
+
+📝 **Important Note:**
+Use Non-custodial wallet address. We discourage the use of centralized exchanges wallet addresses due to memo tag requirements.
       `;
 
       this.bot.sendMessage(chatId, message);
@@ -1460,6 +1506,140 @@ Your account is now active! You can start earning by completing tasks or create 
     } catch (error) {
       console.error('Error creating user account:', error);
       this.bot.sendMessage(chatId, '❌ Error creating account. Please try again.');
+    }
+  }
+
+  private async handleAccountDetails(chatId: number, telegramId: string) {
+    try {
+      const user = await storage.getUserByTelegramId(telegramId);
+      
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ Account not found. Please create an account first using "👤 Create Account"');
+        return;
+      }
+
+      const accountInfo = `
+👤 **Account Details**
+
+**User Information:**
+👤 Telegram ID: [${user.telegramId}](tg://user?id=${user.telegramId})
+💰 Current Balance: ${user.balance} USDT
+🏆 Total Rewards Earned: ${user.rewards} USDT
+📊 Tasks Completed: ${user.completedTasks}
+
+**Wallet Information:**
+💼 Wallet Address: \`${user.walletAddress}\`
+
+**Account Status:**
+✅ Account Active
+🔒 Telegram ID is permanent and will never change
+
+**Quick Actions:**
+      `;
+
+      this.bot.sendMessage(chatId, accountInfo, { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💰 Fund Account', callback_data: 'fund_account' }],
+            [{ text: '🔄 Change Wallet', callback_data: 'change_wallet' }],
+            [{ text: '📊 View Balance', callback_data: 'view_balance' }],
+            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error in handleAccountDetails:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading account details. Please try again.');
+    }
+  }
+
+  private async showBalance(chatId: number, telegramId: string) {
+    try {
+      const user = await storage.getUserByTelegramId(telegramId);
+      
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ Account not found. Please create an account first.');
+        return;
+      }
+
+      const balanceInfo = `
+💰 **Account Balance**
+
+**Current Balance:** ${user.balance} USDT
+**Total Rewards Earned:** ${user.rewards} USDT
+**Tasks Completed:** ${user.completedTasks}
+
+**Wallet Address:** \`${user.walletAddress}\`
+
+**Quick Actions:**
+      `;
+
+      this.bot.sendMessage(chatId, balanceInfo, { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💰 Fund Account', callback_data: 'fund_account' }],
+            [{ text: '💸 Withdraw Funds', callback_data: 'withdraw_funds' }],
+            [{ text: '👤 Account Details', callback_data: 'account_details' }],
+            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error in showBalance:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading balance. Please try again.');
+    }
+  }
+
+  private async updateUserWalletAddress(chatId: number, telegramId: string, newWalletAddress: string) {
+    try {
+      // Validate wallet address
+      if (!tonService.validateAddress(newWalletAddress)) {
+        this.bot.sendMessage(chatId, '❌ Invalid TON wallet address. Please try again.');
+        return;
+      }
+
+      const user = await storage.getUserByTelegramId(telegramId);
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ User not found. Please create an account first.');
+        awaitingWalletChange.delete(telegramId);
+        return;
+      }
+
+      // Convert wallet address to bounceable format
+      const bounceableAddress = tonService.toBounceable(newWalletAddress);
+      
+      // Update user wallet address
+      await storage.updateUserWalletAddress(user.id, bounceableAddress);
+
+      // Clear the wallet change state
+      awaitingWalletChange.delete(telegramId);
+
+      const successMessage = `
+✅ Wallet Address Updated Successfully!
+
+**Previous Wallet:** ${user.walletAddress}
+**New Wallet:** ${bounceableAddress}
+
+🔒 Your wallet address has been updated. All future payments will be sent to the new address.
+
+**Important:** Make sure you have access to this new wallet address as all withdrawals will be sent there.
+      `;
+
+      this.bot.sendMessage(chatId, successMessage, { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '✅ Confirmed', callback_data: 'wallet_change_confirmed' }]
+          ]
+        }
+      });
+
+    } catch (error) {
+      console.error('Error updating wallet address:', error);
+      this.bot.sendMessage(chatId, '❌ Error updating wallet address. Please try again.');
+      awaitingWalletChange.delete(telegramId);
     }
   }
 
@@ -1678,6 +1858,30 @@ Would you like to create a new campaign?
       // Initialize campaign creation state
       campaignCreationStates.set(telegramId, { step: 'platform' });
 
+      // Get available platforms dynamically
+      const platforms = await storage.getAvailablePlatforms();
+      
+      const platformEmojis: { [key: string]: string } = {
+        'twitter': '🐦',
+        'tiktok': '📱',
+        'facebook': '📘',
+        'instagram': '📸',
+        'youtube': '📺',
+        'linkedin': '💼',
+        'telegram': '💬',
+        'discord': '🎮',
+        'reddit': '🤖',
+        'snapchat': '👻',
+        'pinterest': '📌'
+      };
+
+      const platformButtons = platforms.map(platform => [
+        { 
+          text: `${platformEmojis[platform] || '🌐'} ${platform.charAt(0).toUpperCase() + platform.slice(1)}`, 
+          callback_data: `create_platform_${platform}` 
+        }
+      ]);
+
       const createMessage = `
 🎯 Create New Campaign
 
@@ -1685,10 +1889,9 @@ Would you like to create a new campaign?
 
 Choose which platform you want to create a campaign for:
 
-🐦 **Twitter** - Posts, retweets, likes
-📱 **TikTok** - Videos, comments, follows  
-📘 **Facebook** - Posts, shares, likes
-💬 **Telegram** - Channel joins, shares
+${platforms.map(platform => 
+  `${platformEmojis[platform] || '🌐'} **${platform.charAt(0).toUpperCase() + platform.slice(1)}** - Social media campaigns`
+).join('\n')}
 
 Select a platform to continue:
       `;
@@ -1696,10 +1899,7 @@ Select a platform to continue:
       this.bot.sendMessage(chatId, createMessage, {
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🐦 Twitter', callback_data: 'create_platform_twitter' }],
-            [{ text: '📱 TikTok', callback_data: 'create_platform_tiktok' }],
-            [{ text: '📘 Facebook', callback_data: 'create_platform_facebook' }],
-            [{ text: '💬 Telegram', callback_data: 'create_platform_telegram' }],
+            ...platformButtons,
             [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }]
           ]
         }
@@ -2059,23 +2259,111 @@ Paste your ${state.platform} URL here:
   }
 
   private async handleUrlStep(chatId: number, telegramId: string, text: string, state: CampaignCreationState) {
+    // Basic URL format check
     if (!text.startsWith('http')) {
-      this.bot.sendMessage(chatId, '❌ Please provide a valid URL starting with http:// or https://');
+      const platformEmoji = {
+        'twitter': '🐦',
+        'tiktok': '📱',
+        'facebook': '📘',
+        'telegram': '💬',
+        'instagram': '📸',
+        'youtube': '📺',
+        'linkedin': '💼',
+        'discord': '🎮',
+        'reddit': '🤖',
+        'snapchat': '👻',
+        'pinterest': '📌'
+      }[state.platform!] || '🎯';
+
+      this.bot.sendMessage(chatId, `❌ **Invalid URL Format**
+
+${platformEmoji} **${state.platform!.toUpperCase()} Campaign**
+
+Please provide a valid ${state.platform} URL starting with http:// or https://
+
+**📋 Valid ${state.platform!.toUpperCase()} URL Examples:**
+• https://www.${state.platform}.com/yourpage
+• https://${state.platform}.com/yourpage
+• https://m.${state.platform}.com/yourpage
+
+**⚠️ Note:** Only ${state.platform} URLs are accepted for this campaign.`);
       return;
     }
 
-    state.url = text.trim();
-    state.step = 'duration';
-    campaignCreationStates.set(telegramId, state);
+    // Show validation message
+    this.bot.sendMessage(chatId, '🔍 Validating URL security and platform compatibility...');
 
-    const platformEmoji = {
-      'twitter': '🐦',
-      'tiktok': '📱',
-      'facebook': '📘',
-      'telegram': '💬'
-    }[state.platform!] || '🎯';
+    try {
+      // Import URLValidator
+      const { URLValidator } = await import('./urlValidator');
+      
+      // Validate the URL for the selected platform
+      const validation = await URLValidator.validatePlatformUrl(text.trim(), state.platform!);
+      
+      if (!validation.isValid) {
+        const platformExamples = URLValidator.getPlatformExamples(state.platform!);
+        const securityTips = URLValidator.getSecurityTips();
+        
+        const platformEmoji = {
+          'twitter': '🐦',
+          'tiktok': '📱',
+          'facebook': '📘',
+          'telegram': '💬',
+          'instagram': '📸',
+          'youtube': '📺',
+          'linkedin': '💼',
+          'discord': '🎮',
+          'reddit': '🤖',
+          'snapchat': '👻',
+          'pinterest': '📌'
+        }[state.platform!] || '🎯';
 
-    this.bot.sendMessage(chatId, `
+        this.bot.sendMessage(chatId, `
+${validation.error}
+
+${platformEmoji} **${state.platform!.toUpperCase()} Campaign**
+
+**📋 Valid ${state.platform!.toUpperCase()} URL Examples:**
+${platformExamples.map(example => `• ${example}`).join('\n')}
+
+${securityTips}
+
+**⚠️ Important:** Only ${state.platform} URLs are accepted for this campaign.
+
+Please provide a valid ${state.platform} URL:
+        `, {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '❌ Cancel', callback_data: 'cancel_campaign_creation' }],
+              [{ text: '🔒 Security Tips', callback_data: 'show_security_tips' }]
+            ]
+          }
+        });
+        return;
+      }
+
+      // URL is valid, proceed to next step
+      state.url = validation.resolvedUrl || text.trim();
+      state.step = 'duration';
+      campaignCreationStates.set(telegramId, state);
+
+      const platformEmoji = {
+        'twitter': '🐦',
+        'tiktok': '📱',
+        'facebook': '📘',
+        'telegram': '💬',
+        'instagram': '📸',
+        'youtube': '📺',
+        'linkedin': '💼',
+        'discord': '🎮',
+        'reddit': '🤖',
+        'snapchat': '👻',
+        'pinterest': '📌'
+      }[state.platform!] || '🎯';
+
+      this.bot.sendMessage(chatId, `
+✅ **URL Validated Successfully!**
+
 ${platformEmoji} Creating ${state.platform!.toUpperCase()} Campaign
 
 ⏰ **Step 7: Campaign Duration**
@@ -2100,6 +2388,11 @@ Please enter the number of days (1-30):
         ]
       }
     });
+
+    } catch (error) {
+      console.error('Error validating URL:', error);
+      this.bot.sendMessage(chatId, '❌ Error validating URL. Please try again with a valid URL.');
+    }
   }
 
   private async handleDurationStep(chatId: number, telegramId: string, text: string, state: CampaignCreationState) {
@@ -2188,6 +2481,7 @@ ${platformEmoji} **Campaign Summary**
 💰 **Reward:** ${state.reward} USDT per task
 👥 **Participants:** ${state.slots} people
 🔗 **URL:** ${state.url}
+✅ **URL Status:** Validated & Secure
 ⏰ **Duration:** ${state.duration} days (expires ${expirationDate.toLocaleDateString()})
 📋 **Proof Type:** ${proofTypeText}
 📌 **Proof Info:** ${proofDescription}
@@ -2442,6 +2736,48 @@ Please check:
     }
   }
 
+  private async handleChangeWalletAddress(chatId: number, telegramId: string) {
+    try {
+      const user = await storage.getUserByTelegramId(telegramId);
+      
+      if (!user) {
+        this.bot.sendMessage(chatId, '❌ Please create an account first using "👤 Create Account"');
+        return;
+      }
+
+      const currentWalletMessage = `
+🔄 Change Wallet Address
+
+**Current Wallet:** ${user.walletAddress}
+
+Please send your new TON wallet address.
+
+✅ Use bounceable format (recommended):
+EQBUNIp7rk76qbgMPq8vlW8fF4l56IcrOwzEpVjHFfzUY3Yv
+
+⚠️ Make sure you own this wallet as all payments will be sent here.
+
+📝 **Important Note:**
+Use Non-custodial wallet address. We discourage the use of centralized exchanges wallet addresses due to memo tag requirements.
+      `;
+
+      // Set the user in wallet change mode
+      awaitingWalletChange.set(telegramId, true);
+
+      this.bot.sendMessage(chatId, currentWalletMessage, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '❌ Cancel', callback_data: 'cancel_wallet_change' }]
+          ]
+        }
+      });
+
+    } catch (error) {
+      console.error('Error in handleChangeWalletAddress:', error);
+      this.bot.sendMessage(chatId, '❌ Error accessing wallet change. Please try again.');
+    }
+  }
+
   // Handle callback queries
   public setupCallbackHandlers() {
     this.bot.on('callback_query', async (callbackQuery) => {
@@ -2456,6 +2792,82 @@ Please check:
           chat_id: msg.chat.id,
           message_id: msg.message_id
         });
+      }
+
+      if (data === 'cancel_wallet_change') {
+        awaitingWalletChange.delete(telegramId);
+        this.bot.editMessageText('❌ Wallet address change cancelled.', {
+          chat_id: msg.chat.id,
+          message_id: msg.message_id
+        });
+      }
+
+      if (data === 'wallet_change_confirmed') {
+        this.bot.editMessageText('✅ Wallet address change confirmed!', {
+          chat_id: msg.chat.id,
+          message_id: msg.message_id
+        });
+      }
+
+      if (data === 'fund_account') {
+        await this.handleFundAccount(msg.chat.id, telegramId);
+      }
+
+      if (data === 'change_wallet') {
+        await this.handleChangeWalletAddress(msg.chat.id, telegramId);
+      }
+
+      if (data === 'view_balance') {
+        await this.showBalance(msg.chat.id, telegramId);
+      }
+
+      if (data === 'main_menu') {
+        await this.showMainMenu(msg.chat.id, telegramId);
+      }
+
+      if (data === 'account_details') {
+        await this.handleAccountDetails(msg.chat.id, telegramId);
+      }
+
+      if (data === 'withdraw_funds') {
+        await this.handleWithdrawFunds(msg.chat.id, telegramId);
+      }
+
+      if (data === 'admin_platform_menu') {
+        if (this.isAdmin(telegramId)) {
+          await this.showPlatformManagement(msg.chat.id, telegramId);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      if (data === 'add_platform') {
+        if (this.isAdmin(telegramId)) {
+          await this.handleAddPlatform(msg.chat.id, telegramId);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      if (data === 'remove_platform') {
+        if (this.isAdmin(telegramId)) {
+          await this.handleRemovePlatform(msg.chat.id, telegramId);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      if (data.startsWith('remove_platform_')) {
+        if (this.isAdmin(telegramId)) {
+          const platform = data.replace('remove_platform_', '');
+          await this.processRemovePlatform(msg.chat.id, telegramId, platform);
+        } else {
+          this.bot.sendMessage(msg.chat.id, '❌ Access denied. Admin privileges required.');
+        }
+      }
+
+      if (data === 'show_security_tips') {
+        await this.showSecurityTips(msg.chat.id, telegramId);
       }
 
       if (data === 'create_campaign') {
@@ -3509,6 +3921,200 @@ ${notes ? `\n📝 **Notes:** ${notes}` : ''}
     } catch (error) {
       console.error('Error getting user info:', error);
       this.bot.sendMessage(chatId, '❌ Error getting user info. Check console logs.');
+    }
+  }
+
+  // Platform Management Methods
+  private async showPlatformManagement(chatId: number, telegramId: string) {
+    try {
+      const platforms = await storage.getAvailablePlatforms();
+      
+      const platformList = platforms.map(platform => 
+        `• ${platform.charAt(0).toUpperCase() + platform.slice(1)}`
+      ).join('\n');
+
+      const message = `
+🌐 **Platform Management**
+
+**Available Platforms:**
+${platformList}
+
+**Total Platforms:** ${platforms.length}
+
+Choose an action:
+      `;
+
+      this.bot.sendMessage(chatId, message, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '➕ Add Platform', callback_data: 'add_platform' }],
+            [{ text: '➖ Remove Platform', callback_data: 'remove_platform' }],
+            [{ text: '🔄 Refresh List', callback_data: 'admin_platform_menu' }],
+            [{ text: '🔙 Back to Admin', callback_data: 'admin_panel' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error showing platform management:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading platform management.');
+    }
+  }
+
+  private async handleAddPlatform(chatId: number, telegramId: string) {
+    try {
+      this.bot.sendMessage(chatId, `
+➕ **Add New Platform**
+
+Please send the name of the platform you want to add.
+
+**Examples:**
+• discord
+• telegram
+• reddit
+• snapchat
+• pinterest
+
+**Note:** Platform names will be converted to lowercase automatically.
+      `, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '❌ Cancel', callback_data: 'admin_platform_menu' }]
+          ]
+        }
+      });
+
+      // Set user in platform addition mode
+      awaitingPlatformChange.set(telegramId, 'add');
+    } catch (error) {
+      console.error('Error handling add platform:', error);
+      this.bot.sendMessage(chatId, '❌ Error starting platform addition.');
+    }
+  }
+
+  private async handleRemovePlatform(chatId: number, telegramId: string) {
+    try {
+      const platforms = await storage.getAvailablePlatforms();
+      
+      if (platforms.length <= 1) {
+        this.bot.sendMessage(chatId, '❌ Cannot remove the last platform. At least one platform must remain.');
+        return;
+      }
+
+      const platformButtons = platforms.map(platform => 
+        [{ text: `➖ ${platform.charAt(0).toUpperCase() + platform.slice(1)}`, callback_data: `remove_platform_${platform}` }]
+      );
+
+      this.bot.sendMessage(chatId, `
+➖ **Remove Platform**
+
+Select a platform to remove:
+
+**Warning:** This action cannot be undone!
+      `, {
+        reply_markup: {
+          inline_keyboard: [
+            ...platformButtons,
+            [{ text: '❌ Cancel', callback_data: 'admin_platform_menu' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error handling remove platform:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading platform removal.');
+    }
+  }
+
+  private async processRemovePlatform(chatId: number, telegramId: string, platform: string) {
+    try {
+      // Get the admin user to use their ID for the foreign key constraint
+      const adminUser = await storage.getUserByTelegramId(telegramId);
+      if (!adminUser) {
+        this.bot.sendMessage(chatId, '❌ Admin user not found.');
+        return;
+      }
+
+      await storage.removePlatform(platform, adminUser.id);
+      
+      this.bot.sendMessage(chatId, `
+✅ **Platform Removed Successfully!**
+
+**Removed Platform:** ${platform.charAt(0).toUpperCase() + platform.slice(1)}
+
+The platform has been removed from the available options.
+      `, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Refresh List', callback_data: 'admin_platform_menu' }],
+            [{ text: '🔙 Back to Admin', callback_data: 'admin_panel' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error removing platform:', error);
+      this.bot.sendMessage(chatId, '❌ Error removing platform.');
+    }
+  }
+
+  private async processAddPlatform(chatId: number, telegramId: string, platformName: string) {
+    try {
+      const cleanPlatformName = platformName.trim().toLowerCase();
+      
+      if (!cleanPlatformName || cleanPlatformName.length < 2) {
+        this.bot.sendMessage(chatId, '❌ Invalid platform name. Please enter a valid platform name.');
+        return;
+      }
+
+      const existingPlatforms = await storage.getAvailablePlatforms();
+      if (existingPlatforms.includes(cleanPlatformName)) {
+        this.bot.sendMessage(chatId, `❌ Platform "${cleanPlatformName}" already exists.`);
+        return;
+      }
+
+      // Get the admin user to use their ID for the foreign key constraint
+      const adminUser = await storage.getUserByTelegramId(telegramId);
+      if (!adminUser) {
+        this.bot.sendMessage(chatId, '❌ Admin user not found.');
+        return;
+      }
+
+      await storage.addPlatform(cleanPlatformName, adminUser.id);
+      
+      this.bot.sendMessage(chatId, `
+✅ **Platform Added Successfully!**
+
+**New Platform:** ${cleanPlatformName.charAt(0).toUpperCase() + cleanPlatformName.slice(1)}
+
+The platform has been added to the available options and users can now create campaigns for this platform.
+      `, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Refresh List', callback_data: 'admin_platform_menu' }],
+            [{ text: '🔙 Back to Admin', callback_data: 'admin_panel' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error adding platform:', error);
+      this.bot.sendMessage(chatId, '❌ Error adding platform.');
+    }
+  }
+
+  private async showSecurityTips(chatId: number, telegramId: string) {
+    try {
+      const { URLValidator } = await import('./urlValidator');
+      const securityTips = URLValidator.getSecurityTips();
+      
+      this.bot.sendMessage(chatId, securityTips, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Back to Campaign Creation', callback_data: 'create_campaign' }],
+            [{ text: '🏠 Main Menu', callback_data: 'main_menu' }]
+          ]
+        }
+      });
+    } catch (error) {
+      console.error('Error showing security tips:', error);
+      this.bot.sendMessage(chatId, '❌ Error loading security tips.');
     }
   }
 }
